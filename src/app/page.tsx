@@ -152,6 +152,11 @@ const translations = {
     actionNeeded: "Action Needed",
     attentionRequired: "Attention Required",
     criticalPriority: "Critical Priority",
+    monthlyQuota: "Monthly Quota",
+    completed: "Completed",
+    sales: "sales",
+    crmPerformance: "CRM Performance",
+    monthProgressDescription: "Progress of Outbound sales goals against monthly quota.",
   },
   es: {
     dashboard: "Panel de Control",
@@ -174,6 +179,11 @@ const translations = {
     actionNeeded: "Acción Requerida",
     attentionRequired: "Atención Necesaria",
     criticalPriority: "Prioridad Crítica",
+    monthlyQuota: "Cuota Mensual",
+    completed: "Completado",
+    sales: "ventas",
+    crmPerformance: "Rendimiento del CRM",
+    monthProgressDescription: "Progreso de las metas de ventas salientes frente a la cuota mensual.",
   }
 };
 
@@ -187,8 +197,16 @@ export default function Home() {
 
   // Navigation tab (filtered by role)
   const [activeTab, setActiveTab] = useState<string>("dashboard");
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState<"en" | "es">("en");
+
+  const toggleTheme = () => {
+    const nextMode = !darkMode;
+    setDarkMode(nextMode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("llaman2_theme", nextMode ? "dark" : "light");
+    }
+  };
   
   // Everyday Dashboard Metrics (Minimalist)
   const [callsToday, setCallsToday] = useState(384);
@@ -309,8 +327,21 @@ export default function Home() {
       if (storedLang === "en" || storedLang === "es") {
         setLang(storedLang);
       }
+      const storedTheme = localStorage.getItem("llaman2_theme");
+      if (storedTheme === "dark") {
+        setDarkMode(true);
+      } else if (storedTheme === "light") {
+        setDarkMode(false);
+      }
     }
   }, []);
+
+  // Dynamically update target progress based on closedLeads
+  useEffect(() => {
+    const completedSales = 96 + Math.max(0, closedLeads - 12);
+    const newProgress = Math.min(100, Math.round((completedSales / pursueTarget) * 100));
+    setTargetProgress(newProgress);
+  }, [closedLeads, pursueTarget]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -973,7 +1004,7 @@ export default function Home() {
         <div className="flex flex-col gap-2">
           {/* Light/Dark Toggle */}
           <button
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={toggleTheme}
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all cursor-pointer"
           >
             {darkMode ? (
@@ -1732,6 +1763,71 @@ export default function Home() {
                   <p className="text-zinc-500 leading-normal">
                     Outbound calls route through SIP trunk links to your target Connect phone center instance. Leads are updated in Aurora DSQL in real-time.
                   </p>
+                </div>
+              </div>
+
+              {/* Premium Month Progress Card */}
+              <div className="bg-gradient-to-br from-indigo-600 via-blue-600 to-sky-500 text-white rounded-2xl p-6 shadow-lg shadow-indigo-500/10 border border-indigo-500/20 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col gap-5">
+                {/* Decorative glow overlays */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-sky-400/20 rounded-full blur-xl -ml-6 -mb-6 pointer-events-none" />
+
+                <div className="flex justify-between items-start z-10">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-sky-200">{t.crmPerformance}</span>
+                    <h4 className="font-extrabold text-base text-white tracking-wide mt-0.5">{t.targetProgress}</h4>
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-sky-300 animate-pulse" />
+                </div>
+
+                <div className="flex items-center gap-6 z-10">
+                  {/* Gauge */}
+                  <div className="relative flex-shrink-0 w-20 h-20 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle cx="40" cy="40" r="34" stroke="rgba(255,255,255,0.12)" strokeWidth="6" fill="transparent" />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="34"
+                        stroke="url(#crmProgressGrad)"
+                        strokeWidth="6"
+                        fill="transparent"
+                        strokeDasharray="213.6"
+                        strokeDashoffset={213.6 - (213.6 * targetProgress) / 100}
+                        strokeLinecap="round"
+                        className="transition-all duration-1000 ease-out"
+                      />
+                      <defs>
+                        <linearGradient id="crmProgressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#38bdf8" />
+                          <stop offset="100%" stopColor="#818cf8" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <span className="absolute text-lg font-extrabold font-mono text-white">{targetProgress}%</span>
+                  </div>
+
+                  {/* Quota details */}
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-indigo-200 font-semibold">{t.completed}</span>
+                      <span className="text-lg font-extrabold tracking-tight">
+                        {96 + Math.max(0, closedLeads - 12)} <span className="text-xs font-normal text-indigo-200">/ {pursueTarget} {t.sales}</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-indigo-200 font-semibold">{t.monthlyQuota}</span>
+                      <span className="text-xs font-bold">{pursueTarget} {t.sales}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress bar and small label */}
+                <div className="flex flex-col gap-1.5 z-10 mt-1">
+                  <div className="w-full bg-white/15 h-2 rounded-full overflow-hidden">
+                    <div className="bg-gradient-to-r from-sky-400 to-indigo-300 h-full rounded-full transition-all duration-1000" style={{ width: `${targetProgress}%` }} />
+                  </div>
+                  <p className="text-[10px] text-indigo-100 leading-normal font-medium">{t.monthProgressDescription}</p>
                 </div>
               </div>
 
