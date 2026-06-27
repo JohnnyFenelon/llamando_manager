@@ -505,7 +505,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load Twilio Voice SDK script and initialize Device
+  // Load Twilio Voice SDK and initialize Device
   useEffect(() => {
     if (ccpMode !== "twilio") {
       // Clean up and destroy Twilio Device when switching back to simulated mode
@@ -559,25 +559,23 @@ export default function Home() {
       }
     };
 
-    const setupDevice = (token: string) => {
-      const Twilio = (window as any).Twilio;
-      if (!Twilio || !Twilio.Device) {
-        console.error("Twilio Voice SDK is not loaded yet.");
-        setTwilioStatus("error");
-        return;
-      }
-
+    const setupDevice = async (token: string) => {
       try {
+        // Dynamically import the Twilio Voice SDK inside the browser context
+        const { Device } = await import("@twilio/voice-sdk");
+
         // Destroy existing device if any
         if (deviceRef.current) {
-          deviceRef.current.destroy();
+          try {
+            deviceRef.current.destroy();
+          } catch (_) {}
         }
 
-        const device = new Twilio.Device(token, {
-          codecPreferences: ["opus", "pcmu"],
+        const device = new Device(token, {
+          codecPreferences: ["opus", "pcmu"] as any,
           fakeLocalDTMF: true,
           enableIceRestart: true
-        });
+        } as any);
 
         deviceRef.current = device;
 
@@ -617,23 +615,7 @@ export default function Home() {
       }
     };
 
-    // Load Twilio SDK Script from CDN
-    if (!twilioScriptLoadedRef.current) {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.4.0/dist/twilio.min.js";
-      script.async = true;
-      script.onload = () => {
-        twilioScriptLoadedRef.current = true;
-        initTwilio();
-      };
-      script.onerror = () => {
-        console.error("Failed to load Twilio Voice SDK from CDN");
-        setTwilioStatus("error");
-      };
-      document.body.appendChild(script);
-    } else {
-      initTwilio();
-    }
+    initTwilio();
   }, [ccpMode, twilioAccountSid, twilioAuthToken, twilioAppSid, activeUserName]);
 
   // HANDLE USER AUTHENTICATION
