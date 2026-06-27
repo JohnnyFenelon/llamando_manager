@@ -620,7 +620,7 @@ export default function Home() {
     // Load Twilio SDK Script from CDN
     if (!twilioScriptLoadedRef.current) {
       const script = document.createElement("script");
-      script.src = "https://sdk.twilio.com/js/voice/v1.13/twilio.min.js";
+      script.src = "https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.4.0/dist/twilio.min.js";
       script.async = true;
       script.onload = () => {
         twilioScriptLoadedRef.current = true;
