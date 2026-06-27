@@ -522,12 +522,6 @@ export default function Home() {
     }
 
     const initTwilio = async () => {
-      // Do not attempt to initialize without Account SID, Token and App SID
-      if (!twilioAccountSid || !twilioAuthToken || !twilioAppSid) {
-        setTwilioStatus("unregistered");
-        return;
-      }
-
       setTwilioStatus("registering");
 
       try {
