@@ -655,7 +655,7 @@ export default function Home() {
   };
 
   // DIAL CRM LEAD
-  const handleDialCustomer = (customer: any) => {
+  const handleDialCustomer = async (customer: any) => {
     setConnectNumber(customer.phone);
     setConnectName(customer.name);
     setSelectedCustomer(customer);
@@ -671,7 +671,7 @@ export default function Home() {
           To: customer.phone,
           callerId: twilioCallerId
         };
-        const call = deviceRef.current.connect({ params });
+        const call = await deviceRef.current.connect({ params });
         activeCallRef.current = call;
       } catch (err: any) {
         console.error("Twilio connect error:", err);
@@ -689,9 +689,13 @@ export default function Home() {
   };
 
   const handleEndCall = () => {
-    if (ccpMode === "twilio" && activeCallRef.current) {
+    if (ccpMode === "twilio") {
       try {
-        activeCallRef.current.disconnect();
+        if (activeCallRef.current && typeof activeCallRef.current.disconnect === "function") {
+          activeCallRef.current.disconnect();
+        } else if (deviceRef.current) {
+          deviceRef.current.disconnectAll();
+        }
       } catch (err) {
         console.error("Twilio disconnect error:", err);
       }
