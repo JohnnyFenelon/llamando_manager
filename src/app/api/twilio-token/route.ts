@@ -23,8 +23,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing TwiML App SID (TwiML App SID requerido)" }, { status: 400 });
     }
 
-    // Twilio Voice Device registration requires an agent identity name
-    const identity = body.identity || "agent_" + Math.floor(Math.random() * 9000 + 1000);
+    // Twilio Voice Device registration requires an agent identity name (alphanumeric & underscores only)
+    const rawIdentity = body.identity || "agent_" + Math.floor(Math.random() * 9000 + 1000);
+    const identity = rawIdentity.replace(/[^a-zA-Z0-9_]/g, "_");
 
     let token;
 

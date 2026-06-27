@@ -568,7 +568,8 @@ export default function Home() {
         const device = new Device(token, {
           codecPreferences: ["opus", "pcmu"] as any,
           fakeLocalDTMF: true,
-          enableIceRestart: true
+          enableIceRestart: true,
+          enableImprovedSignalingErrorPrecision: true
         } as any);
 
         deviceRef.current = device;
