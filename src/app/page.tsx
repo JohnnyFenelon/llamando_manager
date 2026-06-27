@@ -75,7 +75,9 @@ const initialCustomers = [
   { id: "c5", name: "Quantum Labs", phone: "+1 (555) 056-1188", email: "billing@quantum.edu", status: "new", assignedAgent: "Unassigned", interest: "Low", notes: "Acquired via lead gen portal." },
   { id: "c6", name: "Stellar Logistics", phone: "+1 (555) 067-2345", email: "freight@stellar.com", status: "contacted", assignedAgent: "Chen Wei", interest: "Low", notes: "Gatekeeper was hostile. Try direct line." },
   { id: "c7", name: "Prime Finance Corp", phone: "+1 (555) 078-4392", email: "info@primefinance.com", status: "qualified", assignedAgent: "Sarah Connor", interest: "High", notes: "Highly interested in customer care outsourcing." },
-  { id: "c8", name: "Vanguard Tech", phone: "+1 (555) 089-3012", email: "hr@vanguard.tech", status: "closed_lost", assignedAgent: "Sarah Connor", interest: "None", notes: "No budget for outsource services." }
+  { id: "c8", name: "Vanguard Tech", phone: "+1 (555) 089-3012", email: "hr@vanguard.tech", status: "closed_lost", assignedAgent: "Sarah Connor", interest: "None", notes: "No budget for outsource services." },
+  { id: "test_c1", name: "Juan Pérez", phone: "+1 (809) 709-0770", email: "juan.perez@example.com", status: "new", assignedAgent: "Unassigned", interest: "High", notes: "Twilio Outbound Calling Test Lead 1 (DR)." },
+  { id: "test_c2", name: "María Rodríguez", phone: "+1 (849) 566-0770", email: "maria.rod@example.com", status: "new", assignedAgent: "Unassigned", interest: "High", notes: "Twilio Outbound Calling Test Lead 2 (DR)." }
 ];
 
 const initialUsers = [
@@ -364,13 +366,45 @@ export default function Home() {
         }
       }
       const storedCustomers = localStorage.getItem("llaman2_customers");
+      let parsedCustomers = initialCustomers;
       if (storedCustomers) {
         try {
-          setCustomers(JSON.parse(storedCustomers));
+          parsedCustomers = JSON.parse(storedCustomers);
         } catch (e) {
           console.error("Failed to load customers from localStorage:", e);
         }
       }
+
+      // Ensure the test numbers exist in the list
+      const hasPhone1 = parsedCustomers.some(c => c.phone.includes("809") && c.phone.includes("709"));
+      const hasPhone2 = parsedCustomers.some(c => c.phone.includes("849") && c.phone.includes("566"));
+
+      if (!hasPhone1) {
+        parsedCustomers.push({
+          id: "test_c1",
+          name: "Juan Pérez",
+          phone: "+1 (809) 709-0770",
+          email: "juan.perez@example.com",
+          status: "new",
+          assignedAgent: "Unassigned",
+          interest: "High",
+          notes: "Twilio Outbound Calling Test Lead 1 (DR)."
+        });
+      }
+      if (!hasPhone2) {
+        parsedCustomers.push({
+          id: "test_c2",
+          name: "María Rodríguez",
+          phone: "+1 (849) 566-0770",
+          email: "maria.rod@example.com",
+          status: "new",
+          assignedAgent: "Unassigned",
+          interest: "High",
+          notes: "Twilio Outbound Calling Test Lead 2 (DR)."
+        });
+      }
+      setCustomers(parsedCustomers);
+      localStorage.setItem("llaman2_customers", JSON.stringify(parsedCustomers));
       const storedLang = localStorage.getItem("llaman2_lang");
       if (storedLang === "en" || storedLang === "es") {
         setLang(storedLang);
