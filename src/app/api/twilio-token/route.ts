@@ -28,16 +28,14 @@ export async function POST(req: NextRequest) {
 
     let token;
 
-    // Use API Key & Secret if available, otherwise fallback to Auth Token
+    // Twilio Voice JWT Access Tokens must be signed with a dedicated API Key (SK...) and API Secret.
+    // Signing tokens using the main Auth Token is rejected by Twilio's signaling gateway (Error 20101).
     if (apiKey && apiSecret) {
       token = new AccessToken(accountSid, apiKey, apiSecret, { identity });
-    } else if (authToken) {
-      // AccessToken class accepts accountSid, apiKey, apiSecret.
-      // Under Twilio rules, you can use the Account SID as the API Key
-      // and the Auth Token as the API Secret for quick token generation.
-      token = new AccessToken(accountSid, accountSid, authToken, { identity });
     } else {
-      return NextResponse.json({ error: "Missing Twilio Auth Token or API Key/Secret (Falta Auth Token o API Key/Secret)" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "Missing API Key (SK...) or API Secret in env. Twilio WebRTC requires API Key signing (Settings > API Keys in Twilio Console). (Falta API Key o API Secret. Twilio requiere firma con API Key)." 
+      }, { status: 400 });
     }
 
     // Add voice grant to enable outbound WebRTC calls
