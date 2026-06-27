@@ -157,6 +157,23 @@ const translations = {
     sales: "sales",
     crmPerformance: "CRM Performance",
     monthProgressDescription: "Progress of Outbound sales goals against monthly quota.",
+    twilioDialer: "Twilio WebRTC Dialer",
+    twilioStatusLabel: "Twilio Device Status",
+    simulated: "Simulated",
+    liveTwilio: "Live Twilio",
+    unregistered: "Offline",
+    ready: "Ready",
+    registering: "Registering...",
+    error: "Error",
+    outboundCall: "Outbound WebRTC Telephony",
+    hangUp: "Hang Up",
+    dialing: "Dialing...",
+    connected: "Connected",
+    settingsTitle: "Twilio Credentials",
+    callerIdLabel: "Outbound Caller ID (Phone Number)",
+    instructionsApp: "TwiML App SID",
+    instructionsTitle: "TwiML App Configuration Guide",
+    instructionsDescription: "In the Twilio Console, create a TwiML App. Set its Voice Request URL to a TwiML Bin templated to forward calls.",
   },
   es: {
     dashboard: "Panel de Control",
@@ -184,6 +201,23 @@ const translations = {
     sales: "ventas",
     crmPerformance: "Rendimiento del CRM",
     monthProgressDescription: "Progreso de las metas de ventas salientes frente a la cuota mensual.",
+    twilioDialer: "Marcador Twilio WebRTC",
+    twilioStatusLabel: "Estado del Dispositivo Twilio",
+    simulated: "Simulado",
+    liveTwilio: "Twilio en Vivo",
+    unregistered: "Desconectado",
+    ready: "Listo",
+    registering: "Registrando...",
+    error: "Error",
+    outboundCall: "Telefonía WebRTC de Salida",
+    hangUp: "Colgar",
+    dialing: "Marcando...",
+    connected: "Conectado",
+    settingsTitle: "Credenciales de Twilio",
+    callerIdLabel: "Identificador de Llamadas (Teléfono)",
+    instructionsApp: "TwiML App SID",
+    instructionsTitle: "Guía de Configuración TwiML",
+    instructionsDescription: "En la Consola de Twilio, cree una TwiML App y configure su Voice Request URL a un TwiML Bin con plantilla.",
   }
 };
 
@@ -220,6 +254,20 @@ export default function Home() {
   const [connectName, setConnectName] = useState("");
   const [callDuration, setCallDuration] = useState(0);
   const callTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Twilio Calling Integration state
+  const [ccpMode, setCcpMode] = useState<"simulated" | "twilio">("simulated");
+  const [twilioAccountSid, setTwilioAccountSid] = useState("");
+  const [twilioAuthToken, setTwilioAuthToken] = useState("");
+  const [twilioAppSid, setTwilioAppSid] = useState("");
+  const [twilioCallerId, setTwilioCallerId] = useState("");
+  const [isCcpSettingsOpen, setIsCcpSettingsOpen] = useState(false);
+  const [twilioStatus, setTwilioStatus] = useState<"unregistered" | "ready" | "connecting" | "connected" | "error" | "registering">("unregistered");
+  const [twilioToken, setTwilioToken] = useState("");
+
+  const deviceRef = useRef<any>(null);
+  const activeCallRef = useRef<any>(null);
+  const twilioScriptLoadedRef = useRef(false);
 
   // Form Inputs for Planning & Forecasting
   const [weeklyUsersTarget, setWeeklyUsersTarget] = useState(12000);
@@ -333,8 +381,33 @@ export default function Home() {
       } else if (storedTheme === "light") {
         setDarkMode(false);
       }
+
+      // Twilio credentials loading
+      const storedCcpMode = localStorage.getItem("llaman2_ccp_mode");
+      if (storedCcpMode === "twilio" || storedCcpMode === "simulated") {
+        setCcpMode(storedCcpMode as "simulated" | "twilio");
+      }
+      const storedTwilioAcc = localStorage.getItem("llaman2_twilio_account_sid");
+      if (storedTwilioAcc) setTwilioAccountSid(storedTwilioAcc);
+      const storedTwilioTok = localStorage.getItem("llaman2_twilio_auth_token");
+      if (storedTwilioTok) setTwilioAuthToken(storedTwilioTok);
+      const storedTwilioApp = localStorage.getItem("llaman2_twilio_app_sid");
+      if (storedTwilioApp) setTwilioAppSid(storedTwilioApp);
+      const storedTwilioCall = localStorage.getItem("llaman2_twilio_caller_id");
+      if (storedTwilioCall) setTwilioCallerId(storedTwilioCall);
     }
   }, []);
+
+  // Twilio Settings Persistence
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("llaman2_ccp_mode", ccpMode);
+      localStorage.setItem("llaman2_twilio_account_sid", twilioAccountSid);
+      localStorage.setItem("llaman2_twilio_auth_token", twilioAuthToken);
+      localStorage.setItem("llaman2_twilio_app_sid", twilioAppSid);
+      localStorage.setItem("llaman2_twilio_caller_id", twilioCallerId);
+    }
+  }, [ccpMode, twilioAccountSid, twilioAuthToken, twilioAppSid, twilioCallerId]);
 
   // Dynamically update target progress based on closedLeads
   useEffect(() => {
@@ -398,6 +471,137 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // Load Twilio Voice SDK script and initialize Device
+  useEffect(() => {
+    if (ccpMode !== "twilio") {
+      // Clean up and destroy Twilio Device when switching back to simulated mode
+      if (deviceRef.current) {
+        try {
+          deviceRef.current.destroy();
+          deviceRef.current = null;
+          setTwilioStatus("unregistered");
+        } catch (e) {
+          console.error("Failed to destroy Twilio Device:", e);
+        }
+      }
+      return;
+    }
+
+    const initTwilio = async () => {
+      // Do not attempt to initialize without Account SID, Token and App SID
+      if (!twilioAccountSid || !twilioAuthToken || !twilioAppSid) {
+        setTwilioStatus("unregistered");
+        return;
+      }
+
+      setTwilioStatus("registering");
+
+      try {
+        const res = await fetch("/api/twilio-token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            accountSid: twilioAccountSid,
+            authToken: twilioAuthToken,
+            twimlAppSid: twilioAppSid,
+            identity: activeUserName || "agent_" + Math.floor(Math.random() * 1000 + 1000)
+          })
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          console.error("Token Generation API Error:", data.error);
+          setTwilioStatus("error");
+          return;
+        }
+
+        setTwilioToken(data.token);
+        setupDevice(data.token);
+      } catch (err) {
+        console.error("Failed to fetch Twilio token:", err);
+        setTwilioStatus("error");
+      }
+    };
+
+    const setupDevice = (token: string) => {
+      const Twilio = (window as any).Twilio;
+      if (!Twilio || !Twilio.Device) {
+        console.error("Twilio Voice SDK is not loaded yet.");
+        setTwilioStatus("error");
+        return;
+      }
+
+      try {
+        // Destroy existing device if any
+        if (deviceRef.current) {
+          deviceRef.current.destroy();
+        }
+
+        const device = new Twilio.Device(token, {
+          codecPreferences: ["opus", "pcmu"],
+          fakeLocalDTMF: true,
+          enableIceRestart: true
+        });
+
+        deviceRef.current = device;
+
+        device.on("registered", () => {
+          console.log("Twilio Device Registered");
+          setTwilioStatus("ready");
+        });
+
+        device.on("error", (err: any) => {
+          console.error("Twilio Device Error:", err);
+          setTwilioStatus("error");
+        });
+
+        device.on("connect", (call: any) => {
+          console.log("Twilio Call Connected");
+          activeCallRef.current = call;
+          setConnectStatus("connected");
+
+          call.on("disconnect", () => {
+            console.log("Twilio Call Disconnected");
+            activeCallRef.current = null;
+            setConnectStatus("available");
+            setConnectNumber("");
+            setConnectName("");
+
+            // Automatically open notes modal
+            setCallNotesText("");
+            setIsNotesModalOpen(true);
+          });
+        });
+
+        // Register the device
+        device.register();
+      } catch (err) {
+        console.error("Error setting up Twilio Device:", err);
+        setTwilioStatus("error");
+      }
+    };
+
+    // Load Twilio SDK Script from CDN
+    if (!twilioScriptLoadedRef.current) {
+      const script = document.createElement("script");
+      script.src = "https://sdk.twilio.com/js/voice/v1.13/twilio.min.js";
+      script.async = true;
+      script.onload = () => {
+        twilioScriptLoadedRef.current = true;
+        initTwilio();
+      };
+      script.onerror = () => {
+        console.error("Failed to load Twilio Voice SDK from CDN");
+        setTwilioStatus("error");
+      };
+      document.body.appendChild(script);
+    } else {
+      initTwilio();
+    }
+  }, [ccpMode, twilioAccountSid, twilioAuthToken, twilioAppSid, activeUserName]);
+
   // HANDLE USER AUTHENTICATION
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,16 +647,46 @@ export default function Home() {
   const handleDialCustomer = (customer: any) => {
     setConnectNumber(customer.phone);
     setConnectName(customer.name);
-    setConnectStatus("calling");
     setSelectedCustomer(customer);
-    
-    // Auto transition from calling to connected in 2s
-    setTimeout(() => {
-      setConnectStatus("connected");
-    }, 2000);
+
+    if (ccpMode === "twilio") {
+      if (twilioStatus !== "ready" || !deviceRef.current) {
+        alert("Twilio Voice client is not ready. Please configure your Twilio credentials using the settings cog in the dialer widget. (El cliente Twilio no está listo. Configure las credenciales en los ajustes del marcador).");
+        return;
+      }
+      setConnectStatus("calling");
+      try {
+        const params = {
+          To: customer.phone,
+          callerId: twilioCallerId
+        };
+        const call = deviceRef.current.connect({ params });
+        activeCallRef.current = call;
+      } catch (err: any) {
+        console.error("Twilio connect error:", err);
+        alert("Outbound call failed (Fallo al iniciar llamada): " + (err.message || err));
+        setConnectStatus("available");
+      }
+    } else {
+      // Simulated Mode
+      setConnectStatus("calling");
+      // Auto transition from calling to connected in 2s
+      setTimeout(() => {
+        setConnectStatus("connected");
+      }, 2000);
+    }
   };
 
   const handleEndCall = () => {
+    if (ccpMode === "twilio" && activeCallRef.current) {
+      try {
+        activeCallRef.current.disconnect();
+      } catch (err) {
+        console.error("Twilio disconnect error:", err);
+      }
+      activeCallRef.current = null;
+    }
+
     setConnectStatus("available");
     setConnectNumber("");
     setConnectName("");
@@ -1670,14 +1904,128 @@ export default function Home() {
               <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl overflow-hidden shadow-sm">
                 <div className="bg-[#1f2937] text-white p-4 flex justify-between items-center border-b border-zinc-700">
                   <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                    <span className="text-xs font-semibold tracking-wider font-mono">AMAZON CONNECT CCP</span>
+                    <div className={`w-2.5 h-2.5 rounded-full ${ccpMode === "twilio" && twilioStatus === "ready" ? "bg-emerald-500 animate-ping" : "bg-blue-500 animate-ping"}`} />
+                    <span className="text-xs font-semibold tracking-wider font-mono">
+                      {ccpMode === "twilio" ? t.twilioDialer.toUpperCase() : "SIMULATED DIALER"}
+                    </span>
                   </div>
-                  <a href="https://novusj.my.connect.aws" target="_blank" rel="noreferrer" title="Open Actual AWS Connect Console">
-                    <ExternalLink className="w-3.5 h-3.5 text-zinc-400 hover:text-white" />
-                  </a>
+                  
+                  <div className="flex items-center gap-2.5">
+                    {/* Dialer Mode Selector */}
+                    <select
+                      value={ccpMode}
+                      onChange={(e) => setCcpMode(e.target.value as "simulated" | "twilio")}
+                      className="bg-zinc-800 text-[10px] text-zinc-300 font-semibold px-2 py-0.5 rounded border border-zinc-700 outline-none cursor-pointer hover:border-zinc-600 transition-colors"
+                    >
+                      <option value="simulated">{t.simulated}</option>
+                      <option value="twilio">{t.liveTwilio}</option>
+                    </select>
+
+                    {ccpMode === "twilio" && (
+                      <button
+                        onClick={() => setIsCcpSettingsOpen(!isCcpSettingsOpen)}
+                        title={t.settingsTitle}
+                        className={`p-0.5 rounded transition-colors cursor-pointer ${isCcpSettingsOpen ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    <a 
+                      href="https://www.twilio.com/console" 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      title="Open Twilio Console"
+                      className="text-zinc-400 hover:text-white transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
                 </div>
 
+                {/* Twilio Settings Drawer */}
+                {ccpMode === "twilio" && isCcpSettingsOpen && (
+                  <div className="p-5 bg-zinc-950 text-white flex flex-col gap-4 text-xs border-b border-zinc-850">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-bold text-sky-400 flex items-center gap-1.5">
+                        <Settings className="w-4 h-4" /> {t.settingsTitle}
+                      </h4>
+                      <button
+                        onClick={() => setIsCcpSettingsOpen(false)}
+                        className="text-zinc-400 hover:text-white font-bold text-base cursor-pointer"
+                      >
+                        &times;
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="font-semibold text-zinc-400">Account SID</label>
+                        <input
+                          type="text"
+                          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxx"
+                          value={twilioAccountSid}
+                          onChange={(e) => setTwilioAccountSid(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="font-semibold text-zinc-400">Auth Token</label>
+                        <input
+                          type="password"
+                          placeholder="Your Twilio Auth Token"
+                          value={twilioAuthToken}
+                          onChange={(e) => setTwilioAuthToken(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="font-semibold text-zinc-400">{t.instructionsApp}</label>
+                        <input
+                          type="text"
+                          placeholder="APxxxxxxxxxxxxxxxxxxxxxxxx"
+                          value={twilioAppSid}
+                          onChange={(e) => setTwilioAppSid(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="font-semibold text-zinc-400">{t.callerIdLabel}</label>
+                        <input
+                          type="text"
+                          placeholder="+15551234567"
+                          value={twilioCallerId}
+                          onChange={(e) => setTwilioCallerId(e.target.value)}
+                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => setIsCcpSettingsOpen(false)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-bold transition-colors cursor-pointer mt-1"
+                      >
+                        Save Configuration
+                      </button>
+                    </div>
+
+                    <div className="border-t border-zinc-850 pt-3 flex flex-col gap-1.5">
+                      <h5 className="font-semibold text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> {t.instructionsTitle}
+                      </h5>
+                      <p className="text-[10px] text-zinc-400 leading-normal">
+                        {t.instructionsDescription}
+                      </p>
+                      <pre className="bg-zinc-900 p-2 rounded border border-zinc-850 text-[9px] text-zinc-300 font-mono overflow-x-auto whitespace-pre-wrap select-all">
+                        {`<Response>\n  <Dial callerId="${twilioCallerId || '{{callerId}}'}">\n    <Number>{{To}}</Number>\n  </Dial>\n</Response>`}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dialer Widget Body */}
                 <div className="p-6 bg-zinc-900 text-white flex flex-col items-center justify-center gap-6 min-h-[325px]">
                   
                   {connectStatus === "available" && (
@@ -1689,10 +2037,27 @@ export default function Home() {
                         <h4 className="font-bold text-sm">Line Status: Available</h4>
                         <p className="text-xs text-zinc-500 mt-1">Select a CRM customer to begin dialing</p>
                       </div>
-                      <div className="flex gap-2">
-                        <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30">CCP Ready</span>
-                        <span className="bg-zinc-800 text-zinc-400 text-[10px] px-2 py-0.5 rounded border border-zinc-700">Agent Mode</span>
-                      </div>
+                      
+                      {ccpMode === "twilio" ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-[10px] text-zinc-500 uppercase font-semibold">{t.twilioStatusLabel}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
+                            twilioStatus === "ready" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                            twilioStatus === "registering" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                            twilioStatus === "error" ? "bg-rose-500/20 text-rose-400 border-rose-500/30" :
+                            "bg-zinc-800 text-zinc-400 border-zinc-700"
+                          }`}>
+                            {twilioStatus === "ready" ? t.ready :
+                             twilioStatus === "registering" ? t.registering :
+                             twilioStatus === "error" ? t.error : t.unregistered}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <span className="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded border border-blue-500/30">SIM Ready</span>
+                          <span className="bg-zinc-800 text-zinc-400 text-[10px] px-2 py-0.5 rounded border border-zinc-700">Offline Mode</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1702,7 +2067,7 @@ export default function Home() {
                         <Phone className="w-8 h-8 animate-pulse" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-sm text-blue-400">Outbound Dialing...</h4>
+                        <h4 className="font-bold text-sm text-blue-400">{t.dialing}</h4>
                         <p className="text-lg font-semibold font-mono mt-1">{connectNumber}</p>
                         <p className="text-xs text-zinc-400 font-medium mt-1">{connectName}</p>
                       </div>
@@ -1710,7 +2075,7 @@ export default function Home() {
                         onClick={handleEndCall}
                         className="bg-rose-600 hover:bg-rose-700 text-white rounded-full px-6 py-2 text-xs font-semibold shadow cursor-pointer transition-colors"
                       >
-                        Cancel Call
+                        {t.hangUp}
                       </button>
                     </div>
                   )}
@@ -1721,7 +2086,7 @@ export default function Home() {
                         <Volume2 className="w-8 h-8" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-sm text-emerald-400">Connected</h4>
+                        <h4 className="font-bold text-sm text-emerald-400">{t.connected}</h4>
                         <p className="text-lg font-semibold font-mono mt-1">{connectNumber}</p>
                         <p className="text-xs text-zinc-400 font-medium mt-1">{connectName}</p>
                         <span className="inline-block mt-3 text-xs bg-zinc-800 px-3 py-1 rounded font-mono text-zinc-300">
@@ -1738,18 +2103,18 @@ export default function Home() {
                               }
                               return c;
                             }));
-                            alert("Lead closed won! Updated in Amazon Aurora PostgreSQL.");
+                            alert("Lead closed won! Updated database.");
                             handleEndCall();
                           }}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow"
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
                         >
                           Won
                         </button>
                         <button 
                           onClick={handleEndCall}
-                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow"
+                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
                         >
-                          Hang up
+                          {t.hangUp}
                         </button>
                       </div>
                     </div>
@@ -1758,10 +2123,12 @@ export default function Home() {
 
                 <div className="p-4 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 text-xs">
                   <h5 className="font-bold mb-1.5 flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
-                    <Server className="w-3.5 h-3.5" /> Outbound Connect Telephony
+                    <Server className="w-3.5 h-3.5" /> {t.outboundCall}
                   </h5>
                   <p className="text-zinc-500 leading-normal">
-                    Outbound calls route through SIP trunk links to your target Connect phone center instance. Leads are updated in Aurora DSQL in real-time.
+                    {ccpMode === "twilio" 
+                      ? "Outbound calls route securely using WebRTC and your Twilio TwiML voice configuration in real-time."
+                      : "Simulated calls run inside the local browser application state for demonstration and offline workflows."}
                   </p>
                 </div>
               </div>
