@@ -256,11 +256,11 @@ export default function Home() {
   const callTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Twilio Calling Integration state
-  const [ccpMode, setCcpMode] = useState<"simulated" | "twilio">("simulated");
+  const [ccpMode, setCcpMode] = useState<"simulated" | "twilio">("twilio");
   const [twilioAccountSid, setTwilioAccountSid] = useState("");
   const [twilioAuthToken, setTwilioAuthToken] = useState("");
-  const [twilioAppSid, setTwilioAppSid] = useState("");
-  const [twilioCallerId, setTwilioCallerId] = useState("");
+  const [twilioAppSid, setTwilioAppSid] = useState("AP687aacf97143b7a5b42325e5aa2a5cb5");
+  const [twilioCallerId, setTwilioCallerId] = useState("+12602701286");
   const [isCcpSettingsOpen, setIsCcpSettingsOpen] = useState(false);
   const [twilioStatus, setTwilioStatus] = useState<"unregistered" | "ready" | "connecting" | "connected" | "error" | "registering">("unregistered");
   const [twilioToken, setTwilioToken] = useState("");
