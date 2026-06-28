@@ -29,7 +29,6 @@ import {
   Search,
   Send,
   Phone,
-  Settings,
   HelpCircle,
   ExternalLink,
   BookOpen,
@@ -325,94 +324,49 @@ export default function Home() {
     }
   }, [darkMode]);
 
-  // LocalStorage Persistence for Users and Customers
+  // Restore UI preferences (theme/language) and any existing server session on mount.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedUsers = localStorage.getItem("llaman2_users");
-      if (storedUsers) {
-        try {
-          setUsersList(JSON.parse(storedUsers));
-        } catch (e) {
-          console.error("Failed to load users from localStorage:", e);
-        }
-      }
-      const storedCustomers = localStorage.getItem("llaman2_customers");
-      let parsedCustomers = initialCustomers;
-      if (storedCustomers) {
-        try {
-          parsedCustomers = JSON.parse(storedCustomers);
-        } catch (e) {
-          console.error("Failed to load customers from localStorage:", e);
-        }
-      }
+    if (typeof window === "undefined") return;
 
-      // Ensure the test numbers exist in the list
-      const hasPhone1 = parsedCustomers.some(c => c.phone.includes("809") && c.phone.includes("709"));
-      const hasPhone2 = parsedCustomers.some(c => c.phone.includes("849") && c.phone.includes("566"));
-
-      if (!hasPhone1) {
-        parsedCustomers.push({
-          id: "test_c1",
-          name: "Juan Pérez",
-          phone: "+1 (809) 709-0770",
-          email: "juan.perez@example.com",
-          status: "new",
-          assignedAgent: "Unassigned",
-          interest: "High",
-          notes: "Twilio Outbound Calling Test Lead 1 (DR)."
-        });
-      }
-      if (!hasPhone2) {
-        parsedCustomers.push({
-          id: "test_c2",
-          name: "María Rodríguez",
-          phone: "+1 (849) 566-0770",
-          email: "maria.rod@example.com",
-          status: "new",
-          assignedAgent: "Unassigned",
-          interest: "High",
-          notes: "Twilio Outbound Calling Test Lead 2 (DR)."
-        });
-      }
-      setCustomers(parsedCustomers);
-      localStorage.setItem("llaman2_customers", JSON.stringify(parsedCustomers));
-      const storedLang = localStorage.getItem("llaman2_lang");
-      if (storedLang === "en" || storedLang === "es") {
-        setLang(storedLang);
-      }
-      const storedTheme = localStorage.getItem("llaman2_theme");
-      if (storedTheme === "dark") {
-        setDarkMode(true);
-      } else if (storedTheme === "light") {
-        setDarkMode(false);
-      }
-
-      // Twilio credentials loading
-      const storedCcpMode = localStorage.getItem("llaman2_ccp_mode");
-      if (storedCcpMode === "twilio" || storedCcpMode === "simulated") {
-        setCcpMode(storedCcpMode as "simulated" | "twilio");
-      }
-      const storedTwilioAcc = localStorage.getItem("llaman2_twilio_account_sid");
-      if (storedTwilioAcc) setTwilioAccountSid(storedTwilioAcc);
-      const storedTwilioTok = localStorage.getItem("llaman2_twilio_auth_token");
-      if (storedTwilioTok) setTwilioAuthToken(storedTwilioTok);
-      const storedTwilioApp = localStorage.getItem("llaman2_twilio_app_sid");
-      if (storedTwilioApp) setTwilioAppSid(storedTwilioApp);
-      const storedTwilioCall = localStorage.getItem("llaman2_twilio_caller_id");
-      if (storedTwilioCall) setTwilioCallerId(storedTwilioCall);
+    const storedLang = localStorage.getItem("llaman2_lang");
+    if (storedLang === "en" || storedLang === "es") {
+      setLang(storedLang);
     }
+    const storedTheme = localStorage.getItem("llaman2_theme");
+    if (storedTheme === "dark") {
+      setDarkMode(true);
+    } else if (storedTheme === "light") {
+      setDarkMode(false);
+    }
+    const storedCcpMode = localStorage.getItem("llaman2_ccp_mode");
+    if (storedCcpMode === "twilio" || storedCcpMode === "simulated") {
+      setCcpMode(storedCcpMode as "simulated" | "twilio");
+    }
+
+    // Restore an existing session (httpOnly cookie) so a refresh keeps the user logged in.
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            applySession(data.user);
+          }
+        }
+      } catch (e) {
+        console.error("Session check failed:", e);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    })();
   }, []);
 
-  // Twilio Settings Persistence
+  // Persist the selected calling mode (UI preference only — no secrets stored client-side).
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("llaman2_ccp_mode", ccpMode);
-      localStorage.setItem("llaman2_twilio_account_sid", twilioAccountSid);
-      localStorage.setItem("llaman2_twilio_auth_token", twilioAuthToken);
-      localStorage.setItem("llaman2_twilio_app_sid", twilioAppSid);
-      localStorage.setItem("llaman2_twilio_caller_id", twilioCallerId);
     }
-  }, [ccpMode, twilioAccountSid, twilioAuthToken, twilioAppSid, twilioCallerId]);
+  }, [ccpMode]);
 
   // Dynamically update target progress based on closedLeads
   useEffect(() => {
@@ -420,18 +374,6 @@ export default function Home() {
     const newProgress = Math.min(100, Math.round((completedSales / pursueTarget) * 100));
     setTargetProgress(newProgress);
   }, [closedLeads, pursueTarget]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("llaman2_users", JSON.stringify(usersList));
-    }
-  }, [usersList]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("llaman2_customers", JSON.stringify(customers));
-    }
-  }, [customers]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -502,21 +444,17 @@ export default function Home() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            accountSid: twilioAccountSid,
-            authToken: twilioAuthToken,
-            twimlAppSid: twilioAppSid,
-            identity: activeUserName || "agent_" + Math.floor(Math.random() * 1000 + 1000)
+            identity: activeUserName || "agent"
           })
         });
 
         const data = await res.json();
-        if (data.error) {
-          console.error("Token Generation API Error:", data.error);
+        if (!res.ok || data.error) {
+          console.error("Token Generation API Error:", data.error || res.statusText);
           setTwilioStatus("error");
           return;
         }
 
-        setTwilioToken(data.token);
         setupDevice(data.token);
       } catch (err) {
         console.error("Failed to fetch Twilio token:", err);
@@ -582,47 +520,82 @@ export default function Home() {
     };
 
     initTwilio();
-  }, [ccpMode, twilioAccountSid, twilioAuthToken, twilioAppSid, activeUserName]);
+  }, [ccpMode, activeUserName]);
 
-  // HANDLE USER AUTHENTICATION
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-
-    // 1. Search users list (created or pre-configured)
-    const foundUser = usersList.find(
-      u => (u.name.toLowerCase() === usernameInput.toLowerCase() || u.email.toLowerCase() === usernameInput.toLowerCase()) && 
-      u.password === passwordInput
-    );
-
-    if (foundUser) {
-      setActiveUserName(foundUser.name);
-      if (foundUser.role === "supervisor") {
-        setUserRole("workforce");
-        setActiveTab("dashboard");
-      } else {
-        setUserRole("agent");
-        setActiveTab("crm");
-      }
-    } else if (usernameInput === "workforce" && passwordInput === "1234") {
-      setActiveUserName("Angela");
+  // Apply an authenticated session to local UI state and trigger data loading.
+  const applySession = (user: { name: string; role: string }) => {
+    setActiveUserName(user.name);
+    if (user.role === "supervisor") {
       setUserRole("workforce");
       setActiveTab("dashboard");
-    } else if (usernameInput === "agent" && passwordInput === "1234") {
-      setActiveUserName("Sarah Connor");
+    } else {
       setUserRole("agent");
       setActiveTab("crm");
-    } else {
-      setAuthError("Invalid credentials. Try workforce/1234, agent/1234, or a created user.");
+    }
+    loadAppData(user.role);
+  };
+
+  // Load customers (everyone) and users (supervisors only) from Aurora-backed APIs.
+  const loadAppData = async (role: string) => {
+    setIsDataLoading(true);
+    try {
+      const reqs: Promise<Response>[] = [fetch("/api/customers")];
+      if (role === "supervisor") reqs.push(fetch("/api/users"));
+      const [custRes, usersRes] = await Promise.all(reqs);
+
+      if (custRes.ok) {
+        const data = await custRes.json();
+        setCustomers(data.customers || []);
+      }
+      if (usersRes && usersRes.ok) {
+        const data = await usersRes.json();
+        setUsersList(data.users || []);
+      }
+    } catch (e) {
+      console.error("Failed to load app data:", e);
+    } finally {
+      setIsDataLoading(false);
     }
   };
 
-  const handleLogout = () => {
+  // HANDLE USER AUTHENTICATION (server-validated, bcrypt-hashed passwords)
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: usernameInput, password: passwordInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || (lang === "es" ? "Credenciales inválidas." : "Invalid credentials."));
+        return;
+      }
+      applySession(data.user);
+    } catch (err) {
+      console.error("Login failed:", err);
+      setAuthError(lang === "es" ? "Error de conexión. Intente de nuevo." : "Connection error. Please try again.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {
+      console.error("Logout failed:", e);
+    }
     setUserRole("guest");
     setUsernameInput("");
     setPasswordInput("");
     setAuthError("");
     setActiveUserName("");
+    setCustomers([]);
+    setUsersList([]);
   };
 
   // DIAL CRM LEAD
@@ -633,14 +606,16 @@ export default function Home() {
 
     if (ccpMode === "twilio") {
       if (twilioStatus !== "ready" || !deviceRef.current) {
-        alert("Twilio Voice client is not ready. Please configure your Twilio credentials using the settings cog in the dialer widget. (El cliente Twilio no está listo. Configure las credenciales en los ajustes del marcador).");
+        alert(lang === "es"
+          ? "El cliente de Amazon Connect no está listo. Verifique la configuración del centro de contacto."
+          : "The Amazon Connect client is not ready. Please verify the contact center configuration.");
         return;
       }
       setConnectStatus("calling");
       try {
+        // Caller ID is injected server-side; the client only sends the destination number.
         const params = {
           To: customer.phone,
-          callerId: twilioCallerId
         };
         const call = await deviceRef.current.connect({ params });
         activeCallRef.current = call;
@@ -684,158 +659,181 @@ export default function Home() {
     }
   };
 
-  // AI NOTE ENHANCEMENT
-  const handleAIEnhanceNote = () => {
+  // Shared helper: enhance free-text notes with Amazon Bedrock (via AI Gateway).
+  const enhanceNoteWithBedrock = async (text: string, kind: "call" | "profile") => {
+    setBedrockLogs(prev => [
+      `Bedrock Runtime: invoking model to enhance ${kind} notes...`,
+      ...prev,
+    ]);
+    const res = await fetch("/api/ai/enhance-note", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, kind, lang }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Bedrock request failed");
+    }
+    const data = await res.json();
+    setBedrockLogs(prev => ["Bedrock: model completed execution.", ...prev]);
+    return data.enhanced as string;
+  };
+
+  // AI NOTE ENHANCEMENT (Amazon Bedrock)
+  const handleAIEnhanceNote = async () => {
     if (!callNotesText.trim()) return;
     setIsEnhancingNote(true);
-
-    const promptLog = `📡 Bedrock Runtime: Invoking Claude-3-5-sonnet to enhance notes...
-📝 Input: "${callNotesText}"`;
-    setBedrockLogs(prev => [promptLog, ...prev]);
-
-    setTimeout(() => {
-      let enhanced = callNotesText;
-      const textLower = callNotesText.toLowerCase();
-
-      if (textLower.includes("call back") || textLower.includes("callback")) {
-        enhanced = `[AI Professional Sync] Outbound call completed. Connected with client decision maker. Requested callback scheduled. Roster assigned to next morning shift.`;
-      } else if (textLower.includes("interest") || textLower.includes("proposal")) {
-        enhanced = `[AI Professional Sync] Outbound pitch delivered. Client expressed strong buying signals. Action item: Dispatch standard SLA pricing proposal and follow up.`;
-      } else if (textLower.includes("budget") || textLower.includes("objection")) {
-        enhanced = `[AI Professional Sync] Call completed. Client raised pricing constraints. Delivered consultative ROI outline illustrating BPO labor cost reductions.`;
-      } else {
-        enhanced = `[AI Professional Sync] Outbound contact established. Value statement delivered. Logged observations: "${callNotesText}".`;
-      }
-
+    try {
+      const enhanced = await enhanceNoteWithBedrock(callNotesText, "call");
       setCallNotesText(enhanced);
+    } catch (err) {
+      console.error("Note enhancement failed:", err);
+      setBedrockLogs(prev => ["Bedrock: request failed.", ...prev]);
+    } finally {
       setIsEnhancingNote(false);
-      setBedrockLogs(prev => ["✓ Bedrock: Summarization model completed execution.", ...prev]);
-    }, 1200);
+    }
   };
 
-  const handleAIEnhanceCustNote = () => {
+  const handleAIEnhanceCustNote = async () => {
     if (!newCustNotes.trim()) return;
     setIsEnhancingCustNote(true);
-
-    const promptLog = `📡 Bedrock Runtime: Invoking Claude-3-5-sonnet to enhance customer profile notes...
-📝 Input: "${newCustNotes}"`;
-    setBedrockLogs(prev => [promptLog, ...prev]);
-
-    setTimeout(() => {
-      let enhanced = newCustNotes;
-      const textLower = newCustNotes.toLowerCase();
-
-      if (textLower.includes("call back") || textLower.includes("callback")) {
-        enhanced = `[AI Profile] Contact requested callback to review product terms and details.`;
-      } else if (textLower.includes("interest") || textLower.includes("proposal")) {
-        enhanced = `[AI Profile] High interest. Prefers pricing proposal via email. Follow up scheduled.`;
-      } else if (textLower.includes("budget") || textLower.includes("objection")) {
-        enhanced = `[AI Profile] Client raised pricing objections. Plan: deliver detailed ROI statement.`;
-      } else {
-        enhanced = `[AI Profile] Profile initialized: "${newCustNotes}".`;
-      }
-
+    try {
+      const enhanced = await enhanceNoteWithBedrock(newCustNotes, "profile");
       setNewCustNotes(enhanced);
+    } catch (err) {
+      console.error("Profile note enhancement failed:", err);
+      setBedrockLogs(prev => ["Bedrock: request failed.", ...prev]);
+    } finally {
       setIsEnhancingCustNote(false);
-      setBedrockLogs(prev => ["✓ Bedrock: Summarization model completed execution.", ...prev]);
-    }, 1200);
+    }
   };
 
-  // ADD NEW CUSTOMER TO CRM
-  const handleAddCustomer = (e: React.FormEvent) => {
+  // ADD NEW CUSTOMER TO CRM (persisted to Aurora)
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName || !newCustPhone) return;
 
-    const newCust = {
-      id: "c_" + Date.now(),
-      name: newCustName,
-      phone: newCustPhone,
-      email: newCustEmail || "N/A",
-      status: newCustStatus,
-      assignedAgent: newCustAgent,
-      interest: newCustInterest,
-      notes: newCustNotes || "No notes added yet."
-    };
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newCustName,
+          phone: newCustPhone,
+          email: newCustEmail || "N/A",
+          status: newCustStatus,
+          assignedAgent: newCustAgent,
+          interest: newCustInterest,
+          notes: newCustNotes || "No notes added yet.",
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to create customer.");
+        return;
+      }
+      const { customer } = await res.json();
+      setCustomers(prev => [customer, ...prev]);
+      setIsCustomerModalOpen(false);
 
-    setCustomers(prev => [newCust, ...prev]);
-    setIsCustomerModalOpen(false);
-    
-    setNewCustName("");
-    setNewCustPhone("");
-    setNewCustEmail("");
-    setNewCustNotes("");
-    setNewCustStatus("new");
-    setNewCustAgent("Unassigned");
-    setNewCustInterest("Medium");
+      setNewCustName("");
+      setNewCustPhone("");
+      setNewCustEmail("");
+      setNewCustNotes("");
+      setNewCustStatus("new");
+      setNewCustAgent("Unassigned");
+      setNewCustInterest("Medium");
+    } catch (err) {
+      console.error("Create customer failed:", err);
+      alert("Connection error while creating customer.");
+    }
   };
 
-  // ADD CALL NOTE FOR A CUSTOMER
-  const handleAddCallNote = () => {
+  // ADD CALL NOTE FOR A CUSTOMER (persisted to Aurora)
+  const handleAddCallNote = async () => {
     if (!selectedCustomer || !callNotesText.trim()) return;
-
-    setCustomers(prev => prev.map(c => {
-      if (c.id === selectedCustomer.id) {
-        return {
-          ...c,
-          notes: `${callNotesText} (${new Date().toLocaleDateString()}) | ` + c.notes
-        };
+    const newNotes = `${callNotesText} (${new Date().toLocaleDateString()}) | ` + (selectedCustomer.notes || "");
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: newNotes }),
+      });
+      if (!res.ok) {
+        alert("Failed to save call notes.");
+        return;
       }
-      return c;
-    }));
-
-    setIsNotesModalOpen(false);
-    setCallNotesText("");
-    alert("Call notes added successfully to customer file.");
+      const { customer } = await res.json();
+      setCustomers(prev => prev.map(c => (c.id === customer.id ? customer : c)));
+      setIsNotesModalOpen(false);
+      setCallNotesText("");
+    } catch (err) {
+      console.error("Add call note failed:", err);
+      alert("Connection error while saving notes.");
+    }
   };
 
-  // MOCK SEND EMAIL
-  const handleSendEmail = () => {
+  // SEND EMAIL (logs the activity to the customer record in Aurora)
+  const handleSendEmail = async () => {
     if (!selectedCustomer || !emailSubject || !emailBody) return;
-
-    setCustomers(prev => prev.map(c => {
-      if (c.id === selectedCustomer.id) {
-        return {
-          ...c,
-          notes: `Sent Email: "${emailSubject}" | ` + c.notes
-        };
+    const newNotes = `Sent Email: "${emailSubject}" | ` + (selectedCustomer.notes || "");
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: newNotes }),
+      });
+      if (res.ok) {
+        const { customer } = await res.json();
+        setCustomers(prev => prev.map(c => (c.id === customer.id ? customer : c)));
       }
-      return c;
-    }));
-
+    } catch (err) {
+      console.error("Email logging failed:", err);
+    }
     setIsEmailModalOpen(false);
     setEmailSubject("");
     setEmailBody("");
-    alert(`Mock email successfully sent to ${selectedCustomer.email}!`);
+    alert(`Email activity logged for ${selectedCustomer.email}.`);
   };
 
-  // CREATE NEW USER (Workforce Admin panel)
-  const handleCreateUser = (e: React.FormEvent) => {
+  // CREATE NEW USER (Workforce Admin panel — password hashed server-side)
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName || !newUserEmail || !newUserPassword) return;
 
-    const newUser = {
-      id: "u_" + Date.now(),
-      name: newUserName,
-      email: newUserEmail,
-      password: newUserPassword, // Password stored!
-      role: newUserRole,
-      status: "Active"
-    };
-
-    setUsersList(prev => [...prev, newUser]);
-    setNewUserName("");
-    setNewUserEmail("");
-    setNewUserPassword("");
-    setNewUserRole("agent");
-    alert(`User ${newUserName} successfully created. They can now log in using password!`);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to create user.");
+        return;
+      }
+      setUsersList(prev => [...prev, data.user]);
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserRole("agent");
+      alert(`User ${data.user.name} created successfully. They can now log in.`);
+    } catch (err) {
+      console.error("Create user failed:", err);
+      alert("Connection error while creating user.");
+    }
   };
 
-  // IMPORT LEADS (CSV / Textarea parser)
-  const handleImportLeads = () => {
+  // IMPORT LEADS (CSV / Textarea parser — persisted to Aurora)
+  const handleImportLeads = async () => {
     if (!importLeadsText.trim()) return;
 
     const lines = importLeadsText.split("\n");
-    let addedCount = 0;
     const parsedCustomers: any[] = [];
 
     lines.forEach(line => {
@@ -844,33 +842,48 @@ export default function Home() {
         const name = parts[0].trim();
         const phone = parts[1].trim();
         const email = parts[2] ? parts[2].trim() : `${name.toLowerCase().replace(" ", "")}@lead.com`;
-        
+        if (!name || !phone) return;
         parsedCustomers.push({
-          id: "import_" + Date.now() + "_" + Math.random().toString(36).substring(7),
           name,
           phone,
           email,
           status: "new",
           assignedAgent: "Unassigned",
           interest: "Medium",
-          notes: "Imported via CSV workforce tool."
+          notes: "Imported via CSV workforce tool.",
         });
-        addedCount++;
       }
     });
 
-    if (parsedCustomers.length > 0) {
-      setCustomers(prev => [...parsedCustomers, ...prev]);
+    if (parsedCustomers.length === 0) {
+      alert("Invalid format. Please use: Name, Phone, Email (one per line).");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/customers/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customers: parsedCustomers }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to import leads.");
+        return;
+      }
+      const { customers: inserted } = await res.json();
+      setCustomers(prev => [...(inserted || []), ...prev]);
       setImportLeadsText("");
       setIsImportModalOpen(false);
-      alert(`Successfully imported ${addedCount} customer leads to CRM.`);
-    } else {
-      alert("Invalid format. Please use: Name, Phone, Email (one per line).");
+      alert(`Successfully imported ${inserted?.length || 0} customer leads to CRM.`);
+    } catch (err) {
+      console.error("Import leads failed:", err);
+      alert("Connection error while importing leads.");
     }
   };
 
-  // RUN BEDROCK AI PLANNING MODEL
-  const runBedrockPlanner = () => {
+  // RUN AMAZON BEDROCK AI PLANNING MODEL (real inference via AI Gateway)
+  const runBedrockPlanner = async () => {
     setIsGenerating(true);
     setBedrockLogs([]);
     setIsForecastGenerated(false);
@@ -881,60 +894,52 @@ export default function Home() {
       setBedrockLogs([...logs]);
     };
 
-    setTimeout(() => {
-      addLog("📡 Initializing AWS Bedrock Runtime client in us-east-1...");
-    }, 500);
+    addLog("Initializing Amazon Bedrock Runtime client...");
+    addLog(`Parameters: { WeeklyUsers: ${weeklyUsersTarget}, Agents: [M:${agentsMorning}, A:${agentsAfternoon}, N:${agentsNight}, W:${agentsWeekend}], Target: ${pursueTarget}, Leads: ${leadsPurchased} }`);
 
-    setTimeout(() => {
-      addLog("📝 Formatting payload parameters into Bedrock request JSON...");
-      addLog(`Parameters: { WeeklyUsers: ${weeklyUsersTarget}, Agents: [M:${agentsMorning}, A:${agentsAfternoon}, N:${agentsNight}, W:${agentsWeekend}], Target: ${pursueTarget}, Leads: ${leadsPurchased} }`);
-    }, 1500);
+    try {
+      const agentNames = usersList
+        .filter((u) => u.role === "agent")
+        .map((u) => u.name);
 
-    setTimeout(() => {
-      addLog("🚀 Invoking Bedrock Model: anthropic.claude-3-5-sonnet-20241022-v2:0");
-      addLog("🧠 Constructing prompt instructions for Shift Optimizer & Forecasting system...");
-    }, 3000);
+      addLog("Invoking Bedrock model for shift optimization & forecasting...");
+      const res = await fetch("/api/ai/planner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weeklyUsersTarget,
+          agentsMorning,
+          agentsAfternoon,
+          agentsNight,
+          agentsWeekend,
+          agentsTotalMonth,
+          pursueTarget,
+          leadsPurchased,
+          agentNames,
+          lang,
+        }),
+      });
 
-    setTimeout(() => {
-      addLog("📥 Bedrock Streaming response chunks received...");
-      addLog("✓ AI schedule optimization constraints satisfied.");
-      addLog("✓ Projected conversion rates and agent hour outputs solved.");
-    }, 4500);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Bedrock planner request failed");
+      }
 
-    setTimeout(() => {
-      const schedule = [
-        { day: "Mon", morning: "Yuki, Chen", afternoon: "Aarav, Sarah", night: "John", weekend: "-" },
-        { day: "Tue", morning: "Yuki, Marcus", afternoon: "Chen, Aarav", night: "Sarah", weekend: "-" },
-        { day: "Wed", morning: "Sarah, John", afternoon: "Yuki, Chen", night: "Aarav", weekend: "-" },
-        { day: "Thu", morning: "Aarav, Marcus", afternoon: "Sarah, John", night: "Chen", weekend: "-" },
-        { day: "Fri", morning: "Chen, Yuki", afternoon: "Aarav, John", night: "Marcus", weekend: "-" },
-        { day: "Sat", morning: "-", afternoon: "-", night: "-", weekend: "Sarah, Yuki, John" },
-        { day: "Sun", morning: "-", afternoon: "-", night: "-", weekend: "Chen, Aarav, Marcus" }
-      ];
-      setGeneratedSchedules(schedule);
+      const data = await res.json();
+      addLog("Bedrock response received. Applying optimization results...");
 
-      const weeklyCallsNeeded = Math.ceil(leadsPurchased / 4);
-      const forecast = [
-        { week: "Week 1", calls: weeklyCallsNeeded, projectedSales: Math.round(pursueTarget * 0.22), requiredHours: 320, efficiency: "88%" },
-        { week: "Week 2", calls: weeklyCallsNeeded, projectedSales: Math.round(pursueTarget * 0.26), requiredHours: 350, efficiency: "91%" },
-        { week: "Week 3", calls: weeklyCallsNeeded, projectedSales: Math.round(pursueTarget * 0.28), requiredHours: 360, efficiency: "94%" },
-        { week: "Week 4", calls: weeklyCallsNeeded, projectedSales: Math.round(pursueTarget * 0.24), requiredHours: 330, efficiency: "89%" }
-      ];
-      setMonthlyForecast(forecast);
-
-      setAiSuggestions(
-        `Based on the purchase of **${leadsPurchased} leads** and a pursuit target of **${pursueTarget} sales**, here is the Bedrock Optimization Strategy:
-
-* **Conversion Rate Target**: You need an average conversion rate of **${((pursueTarget / leadsPurchased) * 100).toFixed(1)}%**.
-* **Call Frequency**: Outbound agents must make approximately **${Math.ceil(leadsPurchased / (4 * 5 * 10))} calls per agent per hour** (based on ${agentsTotalMonth} active agents in rotation).
-* **Shift Optimization**: Afternoon shift capacity was expanded to **${agentsAfternoon} agents** as call answer rates spike by 40% between 14:00 and 17:30.
-* **Lead Strategy**: AI has mapped CRM leads to agents based on previous close history. Yuki Tanaka is allocated high-interest corporate accounts.`
-      );
+      setGeneratedSchedules(data.schedule || []);
+      setMonthlyForecast(data.forecast || []);
+      setAiSuggestions(data.strategy || "");
 
       setIsGenerating(false);
       setIsForecastGenerated(true);
-      addLog("🎉 Planning matrix successfully updated in Amazon Aurora PostgreSQL.");
-    }, 6000);
+      addLog("Planning matrix successfully updated.");
+    } catch (err) {
+      console.error("Bedrock planner failed:", err);
+      addLog("Bedrock planner request failed. Please try again.");
+      setIsGenerating(false);
+    }
   };
 
   const handleWizardSubmit = () => {
@@ -997,46 +1002,66 @@ export default function Home() {
            c.status.toLowerCase().includes(query);
   });
 
-  // SEND CHAT MESSAGE TO AI SALES COACH
-  const handleSendChatMessage = () => {
+  // SEND CHAT MESSAGE TO AI SALES COACH (Amazon Bedrock via AI Gateway)
+  const handleSendChatMessage = async () => {
     if (!chatInput.trim()) return;
 
     const userMsg = { sender: "user", text: chatInput };
-    setChatMessages(prev => [...prev, userMsg]);
+    const history = [...chatMessages, userMsg];
+    setChatMessages(history);
     setChatInput("");
     setIsChatLoading(true);
 
-    setTimeout(() => {
-      let aiText = "";
-      const textLower = userMsg.text.toLowerCase();
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history.map((m) => ({
+            role: m.sender === "user" ? "user" : "assistant",
+            content: m.text,
+          })),
+          pursueTarget,
+          lang,
+        }),
+      });
 
-      if (textLower.includes("script") || textLower.includes("cold")) {
-        aiText = `Here is a custom Bedrock-generated outbound cold calling script tailored to your Connect center:
-
-**Introduction:**
-"Hi [Customer Name], this is [Agent Name] calling on behalf of [Company Name]. I hope your day is going well. I’m reaching out because we noticed your firm is expanding its logistics operations, and we help companies reduce shipping overhead by 18%."
-
-**Objection Handling ("No Budget"):**
-"I completely understand. Many of our current clients said the same initially. We actually structure our service so it pays for itself from the shipping savings in the first 45 days. Would you be open to a quick 5-minute audit next Tuesday?"`;
-      } else if (textLower.includes("objection") || textLower.includes("budget")) {
-        aiText = `### AI Objection Handling Plan (Target: BPO Operations)
-
-1. **"No Budget"**: Pivot to ROI. Explain that the outsourced service reduces internal cost, shifting fixed payroll to variable call-rate pricing.
-2. **"Already Have a Provider"**: Ask: *"What is one thing you wish your current provider did faster?"* Focus on our Connect real-time SLA metrics (AHT < 180s).
-3. **"Send Email Instead"**: Say: *"I will send that over. To make sure I include only relevant pricing, are you managing inbound customer support or outbound sales?"*`;
-      } else {
-        aiText = `Thank you for your question. To help you hit your monthly target of **${pursueTarget} sales**, I recommend:
-- Structuring outbound calls into two 2-hour sprints per day (10:00-12:00 and 15:00-17:00).
-- Standardizing the pitch structure around immediate value propositions.
-- Let me know if you want me to write a script or refine objections.`;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Chat request failed");
       }
 
-      setChatMessages(prev => [...prev, { sender: "ai", text: aiText }]);
+      const data = await res.json();
+      setChatMessages(prev => [...prev, { sender: "ai", text: data.text }]);
+    } catch (err) {
+      console.error("AI chat failed:", err);
+      setChatMessages(prev => [
+        ...prev,
+        {
+          sender: "ai",
+          text: lang === "es"
+            ? "Lo siento, el asistente no está disponible en este momento. Intente de nuevo."
+            : "Sorry, the assistant is unavailable right now. Please try again.",
+        },
+      ]);
+    } finally {
       setIsChatLoading(false);
-    }, 1500);
+    }
   };
 
   const COLORS = ["#3b82f6", "#10b981", "#fbbf24", "#ef4444", "#a78bfa"];
+
+  // ==========================================
+  // RENDER LOADING STATE WHILE RESTORING SESSION
+  // ==========================================
+  if (isAuthChecking) {
+    return (
+      <div className="flex-1 flex flex-col justify-center items-center bg-[#f0f4f8] text-zinc-900 dark:bg-[#0b0f19] dark:text-zinc-100 min-h-screen gap-4">
+        <LMLogo className="w-12 h-12 animate-pulse" />
+        <span className="text-xs text-zinc-500 font-medium">Loading workspace...</span>
+      </div>
+    );
+  }
 
   // ==========================================
   // RENDER INTERFACE GUEST / LOGIN CARD
@@ -1073,7 +1098,7 @@ export default function Home() {
               <label className="text-xs font-semibold text-zinc-500 block mb-1">Username / Email</label>
               <input 
                 type="text" 
-                placeholder="e.g. workforce or yuki@connect-bpo.com" 
+                placeholder="e.g. workforce@connect-bpo.com" 
                 value={usernameInput} 
                 onChange={(e) => setUsernameInput(e.target.value)}
                 className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
@@ -1095,21 +1120,22 @@ export default function Home() {
 
             <button 
               type="submit" 
-              className="w-full mt-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-650 text-white font-semibold rounded-xl py-2.5 text-xs shadow cursor-pointer transition-all"
+              disabled={isLoggingIn}
+              className="w-full mt-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-650 text-white font-semibold rounded-xl py-2.5 text-xs shadow cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Sign In
+              {isLoggingIn ? "Signing In..." : "Sign In"}
             </button>
           </form>
 
           <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 text-center">
-            <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Sandbox Credentials</h4>
+            <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Demo Credentials</h4>
             <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
               <div className="bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-200 dark:border-zinc-900">
-                <span className="text-zinc-400">User:</span> workforce<br/>
+                <span className="text-zinc-400">Supervisor:</span><br/>workforce@connect-bpo.com<br/>
                 <span className="text-zinc-400">Pass:</span> 1234
               </div>
               <div className="bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-200 dark:border-zinc-900">
-                <span className="text-zinc-400">User:</span> agent<br/>
+                <span className="text-zinc-400">Agent:</span><br/>agent@connect-bpo.com<br/>
                 <span className="text-zinc-400">Pass:</span> 1234
               </div>
             </div>
@@ -1907,21 +1933,11 @@ export default function Home() {
                       <option value="twilio">{t.liveTwilio}</option>
                     </select>
 
-                    {ccpMode === "twilio" && (
-                      <button
-                        onClick={() => setIsCcpSettingsOpen(!isCcpSettingsOpen)}
-                        title={t.settingsTitle}
-                        className={`p-0.5 rounded transition-colors cursor-pointer ${isCcpSettingsOpen ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-
                     <a 
-                      href="https://www.twilio.com/console" 
+                      href="https://console.aws.amazon.com/connect/v2/app/instances" 
                       target="_blank" 
                       rel="noreferrer" 
-                      title="Open Twilio Console"
+                      title={t.connectConsole}
                       className="text-zinc-400 hover:text-white transition-colors"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -1929,86 +1945,29 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Twilio Settings Drawer */}
-                {ccpMode === "twilio" && isCcpSettingsOpen && (
-                  <div className="p-5 bg-zinc-950 text-white flex flex-col gap-4 text-xs border-b border-zinc-850">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-sky-400 flex items-center gap-1.5">
-                        <Settings className="w-4 h-4" /> {t.settingsTitle}
-                      </h4>
-                      <button
-                        onClick={() => setIsCcpSettingsOpen(false)}
-                        className="text-zinc-400 hover:text-white font-bold text-base cursor-pointer"
-                      >
-                        &times;
-                      </button>
+                {/* Amazon Connect quick-access panel (Live mode) */}
+                {ccpMode === "twilio" && (
+                  <a
+                    href="https://console.aws.amazon.com/connect/v2/app/instances"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-center gap-3 p-4 bg-zinc-950 border-b border-zinc-850 hover:bg-zinc-900 transition-colors"
+                  >
+                    <img
+                      src="/amazon-connect-console.png"
+                      alt="Amazon Connect"
+                      className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-zinc-800"
+                    />
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        {t.connectConsole}
+                        <ExternalLink className="w-3 h-3 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                      <span className="text-[10px] text-zinc-400 leading-snug">
+                        {t.connectConsoleDesc}
+                      </span>
                     </div>
-
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="font-semibold text-zinc-400">Account SID</label>
-                        <input
-                          type="text"
-                          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxx"
-                          value={twilioAccountSid}
-                          onChange={(e) => setTwilioAccountSid(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1">
-                        <label className="font-semibold text-zinc-400">Auth Token</label>
-                        <input
-                          type="password"
-                          placeholder="Your Twilio Auth Token"
-                          value={twilioAuthToken}
-                          onChange={(e) => setTwilioAuthToken(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1">
-                        <label className="font-semibold text-zinc-400">{t.instructionsApp}</label>
-                        <input
-                          type="text"
-                          placeholder="APxxxxxxxxxxxxxxxxxxxxxxxx"
-                          value={twilioAppSid}
-                          onChange={(e) => setTwilioAppSid(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1">
-                        <label className="font-semibold text-zinc-400">{t.callerIdLabel}</label>
-                        <input
-                          type="text"
-                          placeholder="+15551234567"
-                          value={twilioCallerId}
-                          onChange={(e) => setTwilioCallerId(e.target.value)}
-                          className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 outline-none text-zinc-200 focus:border-zinc-700 font-mono text-[10px]"
-                        />
-                      </div>
-
-                      <button
-                        onClick={() => setIsCcpSettingsOpen(false)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-bold transition-colors cursor-pointer mt-1"
-                      >
-                        Save Configuration
-                      </button>
-                    </div>
-
-                    <div className="border-t border-zinc-850 pt-3 flex flex-col gap-1.5">
-                      <h5 className="font-semibold text-amber-400 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" /> {t.instructionsTitle}
-                      </h5>
-                      <p className="text-[10px] text-zinc-400 leading-normal">
-                        {t.instructionsDescription}
-                      </p>
-                      <pre className="bg-zinc-900 p-2 rounded border border-zinc-850 text-[9px] text-zinc-300 font-mono overflow-x-auto whitespace-pre-wrap select-all">
-                        {`<Response>\n  <Dial callerId="${twilioCallerId || '{{callerId}}'}">\n    <Number>{{To}}</Number>\n  </Dial>\n</Response>`}
-                      </pre>
-                    </div>
-                  </div>
+                  </a>
                 )}
 
                 {/* Dialer Widget Body */}
@@ -2113,7 +2072,7 @@ export default function Home() {
                   </h5>
                   <p className="text-zinc-500 leading-normal">
                     {ccpMode === "twilio" 
-                      ? "Outbound calls route securely using WebRTC and your Twilio TwiML voice configuration in real-time."
+                      ? "Outbound calls route securely through Amazon Connect cloud telephony in real-time."
                       : "Simulated calls run inside the local browser application state for demonstration and offline workflows."}
                   </p>
                 </div>
@@ -2225,7 +2184,7 @@ export default function Home() {
                 <div className="flex justify-start">
                   <div className="bg-white dark:bg-zinc-900 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                    <span className="text-xs text-zinc-400">Claude-3-5 thinking...</span>
+                    <span className="text-xs text-zinc-400">Amazon Bedrock thinking...</span>
                   </div>
                 </div>
               )}
