@@ -78,3 +78,30 @@ export async function PATCH(
     return NextResponse.json({ error: "Failed to update customer" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const result = await query<{ id: string }>(
+      `DELETE FROM customers WHERE id = $1 RETURNING id`,
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ deleted: result.rows[0].id });
+  } catch (error) {
+    console.error("[v0] Delete customer error:", error);
+    return NextResponse.json({ error: "Failed to delete customer" }, { status: 500 });
+  }
+}

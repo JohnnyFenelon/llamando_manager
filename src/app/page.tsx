@@ -62,25 +62,6 @@ import {
   Cell
 } from "recharts";
 
-// ==========================================
-// MOCK DATA DEFINITIONS
-// ==========================================
-
-const mockHistoricalPredictions = [
-  { hour: "08:00", volume: 145, recommended: 25, current: 20 },
-  { hour: "09:00", volume: 220, recommended: 35, current: 24 },
-  { hour: "10:00", volume: 310, recommended: 50, current: 28, alert: true },
-  { hour: "11:00", volume: 340, recommended: 55, current: 30, alert: true },
-  { hour: "12:00", volume: 280, recommended: 45, current: 32, alert: true },
-  { hour: "13:00", volume: 190, recommended: 30, current: 32 },
-  { hour: "14:00", volume: 175, recommended: 28, current: 32 },
-  { hour: "15:00", volume: 160, recommended: 26, current: 30 },
-  { hour: "16:00", volume: 290, recommended: 48, current: 28, alert: true },
-  { hour: "17:00", volume: 330, recommended: 52, current: 30, alert: true },
-  { hour: "18:00", volume: 210, recommended: 34, current: 32 },
-  { hour: "19:00", volume: 150, recommended: 25, current: 25 }
-];
-
 // Custom SVG Premium Logo for Llaman2 Manager (with letters LM and subtle llama ears)
 function LMLogo({ className = "w-9 h-9" }: { className?: string }) {
   return (
@@ -219,11 +200,13 @@ export default function Home() {
     }
   };
   
-  // Everyday Dashboard Metrics (Minimalist)
-  const [callsToday, setCallsToday] = useState(384);
-  const [avgDuration, setAvgDuration] = useState("248s");
-  const [closedLeads, setClosedLeads] = useState(12);
-  const [targetProgress, setTargetProgress] = useState(64); // % of monthly target
+  // Everyday Dashboard Metrics (live values from Aurora via /api/metrics — no fake seeds)
+  const [callsToday, setCallsToday] = useState(0);
+  const [avgDuration, setAvgDuration] = useState("0s");
+  const [closedLeads, setClosedLeads] = useState(0);
+  const [targetProgress, setTargetProgress] = useState(0); // % of monthly target
+  const [totalClosedWon, setTotalClosedWon] = useState(0); // real month-to-date closed sales
+  const [pipeline, setPipeline] = useState<Record<string, number>>({});
 
   // Amazon Connect Dial Simulator state
   const [connectStatus, setConnectStatus] = useState<"available" | "busy" | "calling" | "connected">("available");
@@ -306,6 +289,19 @@ export default function Home() {
   // Lead Importer Field
   const [importLeadsText, setImportLeadsText] = useState("");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState("");
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  // Workforce removal notifications (raised when a sale is closed)
+  type RemovalNotification = {
+    id: string;
+    customerId: string;
+    customerName: string;
+    outcome: "closed_won" | "closed_lost";
+    at: number;
+  };
+  const [notifications, setNotifications] = useState<RemovalNotification[]>([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   // AI Coach Chat
   const [chatMessages, setChatMessages] = useState<any[]>([
@@ -368,12 +364,15 @@ export default function Home() {
     }
   }, [ccpMode]);
 
-  // Dynamically update target progress based on closedLeads
+  // Month target progress = real closed sales / user-defined target. Starts at 0%.
   useEffect(() => {
-    const completedSales = 96 + Math.max(0, closedLeads - 12);
-    const newProgress = Math.min(100, Math.round((completedSales / pursueTarget) * 100));
+    if (!pursueTarget || pursueTarget <= 0) {
+      setTargetProgress(0);
+      return;
+    }
+    const newProgress = Math.min(100, Math.round((totalClosedWon / pursueTarget) * 100));
     setTargetProgress(newProgress);
-  }, [closedLeads, pursueTarget]);
+  }, [totalClosedWon, pursueTarget]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -406,17 +405,6 @@ export default function Home() {
       setActiveTab("crm");
     }
   }, [userRole]);
-
-  // Real-time ticking for operations metrics
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCallsToday(prev => prev + Math.floor(Math.random() * 3));
-      if (Math.random() > 0.85) {
-        setClosedLeads(prev => prev + 1);
-      }
-    }, 6000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Load Twilio Voice SDK and initialize Device
   useEffect(() => {
@@ -535,6 +523,22 @@ export default function Home() {
     loadAppData(user.role);
   };
 
+  // Fetch live dashboard metrics from Aurora (no fabricated numbers).
+  const loadMetrics = async () => {
+    try {
+      const res = await fetch("/api/metrics");
+      if (!res.ok) return;
+      const m = await res.json();
+      setCallsToday(Number(m.callsToday) || 0);
+      setClosedLeads(Number(m.closedLeadsToday) || 0);
+      setAvgDuration(`${Number(m.avgDurationSeconds) || 0}s`);
+      setTotalClosedWon(Number(m.totalClosedWon) || 0);
+      setPipeline(m.pipeline || {});
+    } catch (e) {
+      console.error("Failed to load metrics:", e);
+    }
+  };
+
   // Load customers (everyone) and users (supervisors only) from Aurora-backed APIs.
   const loadAppData = async (role: string) => {
     setIsDataLoading(true);
@@ -551,6 +555,7 @@ export default function Home() {
         const data = await usersRes.json();
         setUsersList(data.users || []);
       }
+      await loadMetrics();
     } catch (e) {
       console.error("Failed to load app data:", e);
     } finally {
@@ -953,19 +958,16 @@ export default function Home() {
       setAgentsAfternoon(Math.floor(wizardAgentsCount * 0.4));
       setAgentsNight(Math.ceil(wizardAgentsCount * 0.3));
       setAgentsWeekend(Math.floor(wizardAgentsCount * 0.5));
-      setAvgDuration("450s");
     } else if (wizardOfferType === "product") {
       setAgentsMorning(Math.floor(wizardAgentsCount * 0.4));
       setAgentsAfternoon(Math.floor(wizardAgentsCount * 0.4));
       setAgentsNight(Math.ceil(wizardAgentsCount * 0.2));
       setAgentsWeekend(Math.floor(wizardAgentsCount * 0.3));
-      setAvgDuration("180s");
     } else if (wizardOfferType === "service") {
       setAgentsMorning(Math.floor(wizardAgentsCount * 0.5));
       setAgentsAfternoon(Math.floor(wizardAgentsCount * 0.5));
       setAgentsNight(0);
       setAgentsWeekend(0);
-      setAvgDuration("320s");
     }
 
     setIsWizardOpen(false);
@@ -985,7 +987,6 @@ export default function Home() {
     setAgentsTotalMonth(25);
     setPursueTarget(150);
     setLeadsPurchased(1800);
-    setAvgDuration("248s");
     setIsForecastGenerated(false);
     setBedrockLogs([]);
     setGeneratedSchedules([]);
@@ -1361,7 +1362,7 @@ export default function Home() {
                   <div className="bg-blue-600 dark:bg-blue-500 h-full transition-all duration-500" style={{ width: `${targetProgress}%` }} />
                 </div>
                 <div className="flex justify-between mt-3 text-xs text-zinc-500">
-                  <span>Completed: 96 / {pursueTarget} sales</span>
+                  <span>Completed: {totalClosedWon} / {pursueTarget} sales</span>
                   <span>Target: {pursueTarget} sales</span>
                 </div>
               </div>
@@ -2124,7 +2125,7 @@ export default function Home() {
                     <div className="flex flex-col">
                       <span className="text-[10px] text-indigo-200 font-semibold">{t.completed}</span>
                       <span className="text-lg font-extrabold tracking-tight">
-                        {96 + Math.max(0, closedLeads - 12)} <span className="text-xs font-normal text-indigo-200">/ {pursueTarget} {t.sales}</span>
+                        {totalClosedWon} <span className="text-xs font-normal text-indigo-200">/ {pursueTarget} {t.sales}</span>
                       </span>
                     </div>
                     <div className="flex flex-col">
@@ -2238,97 +2239,104 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
               <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-5 shadow-sm">
-                <h4 className="text-sm font-bold mb-4">Operations Deep-Dive: Calls Over Time (Daily)</h4>
+                <h4 className="text-sm font-bold mb-4">Lead Pipeline by Status (Live)</h4>
                 <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart 
-                      data={[
-                        { date: "06/20", calls: 290, duration: 250 },
-                        { date: "06/21", calls: 310, duration: 242 },
-                        { date: "06/22", calls: 340, duration: 235 },
-                        { date: "06/23", calls: 420, duration: 260 },
-                        { date: "06/24", calls: 390, duration: 245 },
-                        { date: "06/25", calls: 410, duration: 238 },
-                        { date: "06/26", calls: callsToday, duration: 248 }
-                      ]} 
-                      margin={{ left: -25 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis dataKey="date" stroke="#71717a" fontSize={11} />
-                      <YAxis stroke="#71717a" fontSize={11} />
-                      <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", color: "#fff" }} />
-                      <Area type="monotone" dataKey="calls" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.15} name="Total Calls" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {Object.keys(pipeline).length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-xs text-zinc-500">
+                      No lead activity yet. Import leads and start calling to populate this chart.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={Object.entries(pipeline).map(([status, count]) => ({
+                          date: status.replace("_", " "),
+                          calls: count,
+                        }))}
+                        margin={{ left: -25 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                        <XAxis dataKey="date" stroke="#71717a" fontSize={11} />
+                        <YAxis stroke="#71717a" fontSize={11} allowDecimals={false} />
+                        <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", color: "#fff" }} />
+                        <Area type="monotone" dataKey="calls" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.15} name="Leads" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
               <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-5 shadow-sm">
-                <h4 className="text-sm font-bold mb-4">Outbound Lead Conversion Outcomes</h4>
+                <h4 className="text-sm font-bold mb-4">Outbound Lead Conversion Outcomes (Live)</h4>
                 <div className="h-64 flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: "Interested", value: 120 },
-                          { name: "Uncontacted", value: 410 },
-                          { name: "Call back", value: 180 },
-                          { name: "Closed Won", value: closedLeads },
-                          { name: "No Interest", value: 240 }
-                        ]}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {[0,1,2,3,4].map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", color: "#fff" }} />
-                      <Legend verticalAlign="bottom" height={36} iconSize={8} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {Object.keys(pipeline).length === 0 ? (
+                    <div className="text-xs text-zinc-500">No conversion data yet.</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "New", value: pipeline["new"] || 0 },
+                            { name: "Contacted", value: pipeline["contacted"] || 0 },
+                            { name: "Qualified", value: pipeline["qualified"] || 0 },
+                            { name: "Closed Won", value: pipeline["closed_won"] || 0 },
+                            { name: "Closed Lost", value: pipeline["closed_lost"] || 0 },
+                          ].filter((d) => d.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {[0,1,2,3,4].map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", color: "#fff" }} />
+                        <Legend verticalAlign="bottom" height={36} iconSize={8} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-6 shadow-sm">
-              <h4 className="font-bold text-sm mb-4">Detailed Agent Efficiency SLA Matrix</h4>
+              <h4 className="font-bold text-sm mb-1">Agent Roster</h4>
+              <p className="text-[11px] text-zinc-500 mb-4">Live agents from your team. Per-agent call metrics populate as outbound activity is logged.</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-400 font-semibold uppercase">
                       <th className="py-2.5 px-2">Agent Name</th>
-                      <th className="py-2.5 px-2">Total Connected Hours</th>
+                      <th className="py-2.5 px-2">Email</th>
                       <th className="py-2.5 px-2 text-right">Avg Handle Time (AHT)</th>
                       <th className="py-2.5 px-2 text-right">Outbound Dials Made</th>
                       <th className="py-2.5 px-2 text-right">Conversions (Sales)</th>
-                      <th className="py-2.5 px-2 text-center">SLA Compliance Rate</th>
+                      <th className="py-2.5 px-2 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      { name: "Yuki Tanaka", hours: 38.5, aht: "215s", calls: 420, conversions: 18, sla: "98.4%" },
-                      { name: "Chen Wei", hours: 40.2, aht: "295s", calls: 390, conversions: 14, sla: "95.1%" },
-                      { name: "Aarav Patel", hours: 39.0, aht: "250s", calls: 412, conversions: 15, sla: "97.2%" },
-                      { name: "Sarah Connor", hours: 36.8, aht: "190s", calls: 350, conversions: 19, sla: "99.0%" }
-                    ].map((agent, index) => (
-                      <tr key={index} className="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/20">
-                        <td className="py-3 px-2 font-semibold">{agent.name}</td>
-                        <td className="py-3 px-2 font-mono text-zinc-500">{agent.hours} hrs</td>
-                        <td className="py-3 px-2 text-right font-mono text-zinc-500">{agent.aht}</td>
-                        <td className="py-3 px-2 text-right font-mono text-zinc-500">{agent.calls}</td>
-                        <td className="py-3 px-2 text-right font-mono text-emerald-500 font-bold">{agent.conversions}</td>
-                        <td className="py-3 px-2 text-center">
-                          <span className="bg-emerald-500/10 text-emerald-500 text-[11px] px-2 py-0.5 rounded font-mono font-bold">
-                            {agent.sla}
-                          </span>
-                        </td>
+                    {usersList.filter((u) => u.role === "agent").length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-zinc-500">No agents yet. Add agents in Workforce Mgmt.</td>
                       </tr>
-                    ))}
+                    ) : (
+                      usersList.filter((u) => u.role === "agent").map((agent) => (
+                        <tr key={agent.id} className="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/20">
+                          <td className="py-3 px-2 font-semibold">{agent.name}</td>
+                          <td className="py-3 px-2 font-mono text-zinc-500">{agent.email}</td>
+                          <td className="py-3 px-2 text-right font-mono text-zinc-400">—</td>
+                          <td className="py-3 px-2 text-right font-mono text-zinc-400">—</td>
+                          <td className="py-3 px-2 text-right font-mono text-zinc-400">—</td>
+                          <td className="py-3 px-2 text-center">
+                            <span className="bg-emerald-500/10 text-emerald-500 text-[11px] px-2 py-0.5 rounded font-mono font-bold">
+                              {agent.status || "Active"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

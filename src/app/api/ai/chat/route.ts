@@ -6,8 +6,11 @@ import { getSession } from "@/lib/session";
 export const maxDuration = 30;
 
 interface ChatTurn {
-  sender: "ai" | "user";
-  text: string;
+  // The client may send either {role, content} (AI SDK style) or {sender, text}.
+  role?: "user" | "assistant";
+  content?: string;
+  sender?: "ai" | "user";
+  text?: string;
 }
 
 export async function POST(req: Request) {
@@ -26,11 +29,17 @@ export async function POST(req: Request) {
     }
 
     const messages: ModelMessage[] = turns
-      .filter((m) => m && m.text)
-      .map((m) => ({
-        role: m.sender === "ai" ? "assistant" : "user",
-        content: m.text,
-      }));
+      .map((m) => {
+        const content = (m.content ?? m.text ?? "").trim();
+        const role =
+          m.role === "assistant" || m.sender === "ai" ? "assistant" : "user";
+        return { role, content } as ModelMessage;
+      })
+      .filter((m) => m.content);
+
+    if (messages.length === 0) {
+      return NextResponse.json({ error: "No messages provided." }, { status: 400 });
+    }
 
     const { text } = await withBedrock((model) =>
       generateText({
@@ -41,8 +50,13 @@ export async function POST(req: Request) {
           `Help draft cold-calling scripts, objection-handling tactics, and conversion strategies. ` +
           `Be practical and concise. Use markdown for structure. Reply in the language the agent uses.`,
         messages,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 1500,
         maxRetries: 1,
+        providerOptions: {
+          // On the Gemini fallback, disable "thinking" so the token budget is
+          // always spent on the actual answer (prevents empty-output 500s).
+          google: { thinkingConfig: { thinkingBudget: 0 } },
+        },
       }),
     );
 
