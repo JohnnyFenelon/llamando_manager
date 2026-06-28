@@ -1,5 +1,9 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { google } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
+
+// Gemini fallback model, used when every Bedrock key is exhausted.
+const GEMINI_MODEL_ID = "gemini-2.5-flash";
 
 // Amazon Bedrock model. Nova Pro is Amazon's flagship multimodal model.
 // In us-* regions Bedrock requires the cross-region inference profile id.
@@ -42,25 +46,41 @@ function isQuotaError(err: unknown): boolean {
 /**
  * Runs an AI SDK call (generateText/streamText) against Amazon Bedrock, rotating
  * through every available API key when one is exhausted by its daily quota.
+ * If all Bedrock keys are exhausted (or none are configured), it falls back to
+ * Google Gemini when GOOGLE_GENERATIVE_AI_API_KEY is set.
  */
 export async function withBedrock<T>(
   fn: (model: LanguageModel) => Promise<T>,
 ): Promise<T> {
   const keys = getBedrockApiKeys();
-  if (keys.length === 0) {
-    throw new Error("No Amazon Bedrock API key configured (AWS_BEARER_TOKEN_BEDROCK).");
-  }
-
+  const hasGeminiFallback = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
   let lastError: unknown;
+
   for (const key of keys) {
     try {
       return await fn(bedrockModelForKey(key));
     } catch (err) {
       lastError = err;
-      // Only rotate on quota/rate errors; otherwise fail fast.
-      if (!isQuotaError(err)) throw err;
-      console.log("[v0] Bedrock key exhausted, rotating to next key...");
+      // Rotate to the next key only on quota/rate errors. For any other Bedrock
+      // failure, stop rotating — but still allow the Gemini fallback below.
+      if (!isQuotaError(err)) {
+        if (!hasGeminiFallback) throw err;
+        break;
+      }
+      console.log("[v0] Bedrock key exhausted, rotating to next provider/key...");
     }
+  }
+
+  // Fall back to Gemini when Bedrock is unavailable, throttled, or errored.
+  if (hasGeminiFallback) {
+    console.log("[v0] Falling back to Google Gemini for AI request.");
+    return await fn(google(GEMINI_MODEL_ID));
+  }
+
+  if (!lastError) {
+    throw new Error(
+      "No AI provider configured. Set AWS_BEARER_TOKEN_BEDROCK or GOOGLE_GENERATIVE_AI_API_KEY.",
+    );
   }
   throw lastError;
 }

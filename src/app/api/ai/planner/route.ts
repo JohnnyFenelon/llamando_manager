@@ -77,8 +77,11 @@ export async function POST(req: Request) {
 Required conversion rate is roughly ${((pursueTarget / leadsPurchased) * 100).toFixed(1)}%.
 Generate the schedule (Mon-Sun), the 4-week forecast, and the recommendations.`,
         output: Output.object({ schema: PlanSchema }),
-        maxOutputTokens: 2000,
+        maxOutputTokens: 3000,
         maxRetries: 1,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 0 } },
+        },
       }),
     );
 
@@ -91,7 +94,7 @@ Generate the schedule (Mon-Sun), the 4-week forecast, and the recommendations.`,
   } catch (error) {
     console.error("[v0] Planner error:", error);
     return NextResponse.json(
-      { error: "Bedrock planning run failed. Please try again." },
+      { error: "AI planning run failed. Please try again." },
       { status: 500 },
     );
   }

@@ -31,8 +31,11 @@ export async function POST(req: Request) {
           context +
           ". Keep it under 2 sentences, professional, action-oriented, in the same language as the input. Return only the rewritten note with no preamble or quotes.",
         prompt: raw,
-        maxOutputTokens: 200,
+        maxOutputTokens: 600,
         maxRetries: 1,
+        providerOptions: {
+          google: { thinkingConfig: { thinkingBudget: 0 } },
+        },
       }),
     );
 

@@ -41,7 +41,7 @@ export async function POST(req: Request) {
           `Help draft cold-calling scripts, objection-handling tactics, and conversion strategies. ` +
           `Be practical and concise. Use markdown for structure. Reply in the language the agent uses.`,
         messages,
-        maxOutputTokens: 800,
+        maxOutputTokens: 2000,
         maxRetries: 1,
       }),
     );
