@@ -42,7 +42,10 @@ import {
   Upload,
   FileSpreadsheet,
   HelpCircle as QuestionIcon,
-  Globe
+  Globe,
+  XCircle,
+  Trash2,
+  Bell
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -292,15 +295,10 @@ export default function Home() {
   const [importFileName, setImportFileName] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
 
-  // Workforce removal notifications (raised when a sale is closed)
-  type RemovalNotification = {
-    id: string;
-    customerId: string;
-    customerName: string;
-    outcome: "closed_won" | "closed_lost";
-    at: number;
-  };
-  const [notifications, setNotifications] = useState<RemovalNotification[]>([]);
+  // Workforce removal notifications are DERIVED from persisted customer state
+  // (any closed_won / closed_lost lead is a removal candidate), so they work
+  // across users and sessions. "Keep" dismisses locally without deleting.
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   // AI Coach Chat
@@ -522,6 +520,27 @@ export default function Home() {
     }
     loadAppData(user.role);
   };
+
+  // Quietly refresh customers + metrics so the workforce manager sees removal
+  // requests raised by agents in other sessions without a manual reload.
+  useEffect(() => {
+    if (userRole !== "workforce") return;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/customers");
+        if (res.ok) {
+          const data = await res.json();
+          setCustomers(data.customers || []);
+        }
+        await loadMetrics();
+      } catch {
+        /* ignore transient polling errors */
+      }
+    };
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole]);
 
   // Fetch live dashboard metrics from Aurora (no fabricated numbers).
   const loadMetrics = async () => {
@@ -801,6 +820,59 @@ export default function Home() {
     alert(`Email activity logged for ${selectedCustomer.email}.`);
   };
 
+  // REGISTER A SALE OUTCOME (closed won / lost) and notify the workforce manager
+  const handleCloseSale = async (customer: any, outcome: "closed_won" | "closed_lost") => {
+    const label = outcome === "closed_won" ? "WON" : "LOST";
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: outcome,
+          prependNote: `Sale marked ${label} by ${activeUserName || "agent"}`,
+        }),
+      });
+      if (!res.ok) {
+        alert("Failed to register the sale outcome.");
+        return;
+      }
+      const { customer: updated } = await res.json();
+      setCustomers(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+      // The closed status is persisted; the workforce manager's bell derives the
+      // removal request from it (cross-session). Un-dismiss in case it was hidden.
+      setDismissedNotifIds(prev => prev.filter(id => id !== updated.id));
+      await loadMetrics();
+    } catch (err) {
+      console.error("Close sale failed:", err);
+      alert("Connection error while registering the sale.");
+    }
+  };
+
+  // REMOVE A CUSTOMER (workforce manager action triggered from a notification)
+  const handleRemoveCustomer = async (customerId: string) => {
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, { method: "DELETE" });
+      if (!res.ok) {
+        alert("Failed to remove the customer.");
+        return;
+      }
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
+      await loadMetrics();
+    } catch (err) {
+      console.error("Remove customer failed:", err);
+      alert("Connection error while removing the customer.");
+    }
+  };
+
+  const dismissNotification = (customerId: string) => {
+    setDismissedNotifIds(prev => (prev.includes(customerId) ? prev : [...prev, customerId]));
+  };
+
+  // Removal candidates derived from persisted state (closed leads not yet dismissed).
+  const removalNotifications = customers.filter(
+    c => (c.status === "closed_won" || c.status === "closed_lost") && !dismissedNotifIds.includes(c.id),
+  );
+
   // CREATE NEW USER (Workforce Admin panel — password hashed server-side)
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -834,27 +906,46 @@ export default function Home() {
     }
   };
 
+  // Read an uploaded .csv/.txt file into the importer textarea.
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = String(ev.target?.result || "");
+      // Append to any text already in the box so manual + file entries combine.
+      setImportLeadsText((prev) => (prev.trim() ? prev.trimEnd() + "\n" + text : text));
+    };
+    reader.onerror = () => alert("Could not read that file. Please upload a plain .csv or .txt file.");
+    reader.readAsText(file);
+    // Reset the input so re-uploading the same file fires the change event again.
+    e.target.value = "";
+  };
+
   // IMPORT LEADS (CSV / Textarea parser — persisted to Aurora)
   const handleImportLeads = async () => {
     if (!importLeadsText.trim()) return;
 
-    const lines = importLeadsText.split("\n");
+    const lines = importLeadsText.split(/\r?\n/);
     const parsedCustomers: any[] = [];
 
-    lines.forEach(line => {
+    lines.forEach((line, idx) => {
+      if (!line.trim()) return;
       const parts = line.split(",");
-      if (parts.length >= 2) {
-        const name = parts[0].trim();
-        const phone = parts[1].trim();
-        const email = parts[2] ? parts[2].trim() : `${name.toLowerCase().replace(" ", "")}@lead.com`;
-        if (!name || !phone) return;
+      const name = (parts[0] || "").trim();
+      const phone = (parts[1] || "").trim();
+      // Skip an optional header row like "Name, Phone, Email".
+      if (idx === 0 && /name/i.test(name) && /phone|tel/i.test(phone)) return;
+      if (parts.length >= 2 && name && phone) {
+        const email = parts[2] ? parts[2].trim() : `${name.toLowerCase().replace(/\s+/g, "")}@lead.com`;
         parsedCustomers.push({
           name,
           phone,
           email,
           status: "new",
           assignedAgent: "Unassigned",
-          interest: "Medium",
+          interest: parts[3] ? parts[3].trim() : "Medium",
           notes: "Imported via CSV workforce tool.",
         });
       }
@@ -879,7 +970,9 @@ export default function Home() {
       const { customers: inserted } = await res.json();
       setCustomers(prev => [...(inserted || []), ...prev]);
       setImportLeadsText("");
+      setImportFileName("");
       setIsImportModalOpen(false);
+      await loadMetrics();
       alert(`Successfully imported ${inserted?.length || 0} customer leads to CRM.`);
     } catch (err) {
       console.error("Import leads failed:", err);
@@ -1313,6 +1406,64 @@ export default function Home() {
               className="w-full bg-white text-zinc-800 text-xs rounded-full pl-12 pr-6 py-3.5 border-0 focus:ring-4 focus:ring-sky-400/40 shadow-md outline-none transition-all placeholder:text-zinc-400 font-semibold"
             />
           </div>
+
+          {/* Workforce manager: removal notifications bell */}
+          {userRole === "workforce" && (
+            <div className="relative z-20">
+              <button
+                onClick={() => setIsNotifOpen(o => !o)}
+                className="relative bg-white/15 hover:bg-white/25 rounded-full p-3 transition-colors cursor-pointer"
+                title="Removal notifications"
+                aria-label="Removal notifications"
+              >
+                <Bell className="w-5 h-5 text-white" />
+                {removalNotifications.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {removalNotifications.length}
+                  </span>
+                )}
+              </button>
+
+              {isNotifOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#0c0c0f] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden text-left">
+                  <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/40">
+                    <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-50">Customer Removal Requests</h4>
+                    <span className="text-[10px] text-zinc-500">{removalNotifications.length} pending</span>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {removalNotifications.length === 0 ? (
+                      <p className="p-4 text-xs text-zinc-500 text-center">No removal requests. Closed sales will appear here.</p>
+                    ) : (
+                      removalNotifications.map(n => (
+                        <div key={n.id} className="p-3 border-b border-zinc-100 dark:border-zinc-900 flex flex-col gap-2">
+                          <div>
+                            <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-50">{n.name}</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                              Sale {n.status === "closed_won" ? "closed (Won)" : "marked Lost"}. Remove from active CRM?
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleRemoveCustomer(n.id)}
+                              className="flex-1 flex items-center justify-center gap-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold rounded-lg py-1.5 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" /> Remove
+                            </button>
+                            <button
+                              onClick={() => dismissNotification(n.id)}
+                              className="flex-1 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-[11px] font-semibold rounded-lg py-1.5 cursor-pointer text-zinc-700 dark:text-zinc-300"
+                            >
+                              Keep
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Primary Page Grid */}
@@ -1329,22 +1480,22 @@ export default function Home() {
                 <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-5 shadow-sm">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">{t.callsToday}</p>
                   <h3 className="text-3xl font-extrabold mt-1 font-mono tracking-tight text-zinc-900 dark:text-zinc-50">{callsToday}</h3>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center mt-2 gap-1">
-                    <TrendingUp className="w-3 h-3" /> +12% from average
+                  <p className="text-xs text-zinc-500 mt-2 flex items-center gap-1">
+                    <PhoneCall className="w-3 h-3" /> Outbound dials logged today
                   </p>
                 </div>
                 
                 <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-5 shadow-sm">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">{t.avgDuration}</p>
                   <h3 className="text-3xl font-extrabold mt-1 font-mono tracking-tight text-zinc-900 dark:text-zinc-50">{avgDuration}</h3>
-                  <p className="text-xs text-zinc-500 mt-2">Target threshold: 240s</p>
+                  <p className="text-xs text-zinc-500 mt-2">Average handle time today</p>
                 </div>
 
                 <div className="bg-white dark:bg-[#111827] border border-zinc-200 dark:border-zinc-850 rounded-2xl p-5 shadow-sm">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">{t.closedLeads}</p>
                   <h3 className="text-3xl font-extrabold mt-1 font-mono tracking-tight text-zinc-900 dark:text-zinc-50">{closedLeads}</h3>
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center mt-2 gap-1">
-                    ✓ Conversion rate: 3.1%
+                    ✓ Conversion rate: {callsToday > 0 ? ((closedLeads / callsToday) * 100).toFixed(1) : "0.0"}%
                   </p>
                 </div>
               </div>
@@ -1899,9 +2050,28 @@ export default function Home() {
                               onClick={() => handleDialCustomer(customer)}
                               disabled={connectStatus === "calling" || connectStatus === "connected"}
                               className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl p-1.5 disabled:opacity-50 cursor-pointer transition-colors"
+                              title="Call"
                             >
                               <Phone className="w-3.5 h-3.5" />
                             </button>
+                            {customer.status !== "closed_won" && customer.status !== "closed_lost" && (
+                              <>
+                                <button
+                                  onClick={() => handleCloseSale(customer, "closed_won")}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl p-1.5 cursor-pointer transition-colors"
+                                  title="Register Sale (Closed Won)"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleCloseSale(customer, "closed_lost")}
+                                  className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl p-1.5 cursor-pointer transition-colors"
+                                  title="Mark Lost"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -2619,13 +2789,40 @@ export default function Home() {
             
             <div className="p-5 flex flex-col gap-3.5">
               <div>
+                <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">Upload CSV File</label>
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,.txt,text/csv"
+                  onChange={handleCsvFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => csvInputRef.current?.click()}
+                  className="w-full flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl py-5 px-3 text-zinc-500 hover:text-blue-600 transition-colors cursor-pointer"
+                >
+                  <Upload className="w-5 h-5" />
+                  <span className="text-xs font-semibold">
+                    {importFileName ? `Loaded: ${importFileName}` : "Click to upload a .csv file"}
+                  </span>
+                  <span className="text-[10px] text-zinc-400">Columns: Name, Phone, Email, Interest (header optional)</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+                <span className="text-[10px] text-zinc-400 uppercase">or paste manually</span>
+                <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+              </div>
+
+              <div>
                 <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">Paste CSV Leads</label>
                 <textarea 
                   value={importLeadsText}
                   onChange={(e) => setImportLeadsText(e.target.value)}
                   placeholder={`John Doe, +1 (555) 111-2222, john@example.com\nJane Smith, +1 (555) 333-4444, jane@example.com`}
                   className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none h-32 resize-none font-mono"
-                  required
                 />
               </div>
 
