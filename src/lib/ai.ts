@@ -1,9 +1,14 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
 
 // Gemini fallback model, used when every Bedrock key is exhausted.
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
+
+// Build a custom Google provider to support either GOOGLE_GENERATIVE_AI_API_KEY or GEMINI_API_KEY
+const googleProvider = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || "",
+});
 
 // Amazon Bedrock model. Nova Pro is Amazon's flagship multimodal model.
 // In us-* regions Bedrock requires the cross-region inference profile id.
@@ -47,13 +52,15 @@ function isQuotaError(err: unknown): boolean {
  * Runs an AI SDK call (generateText/streamText) against Amazon Bedrock, rotating
  * through every available API key when one is exhausted by its daily quota.
  * If all Bedrock keys are exhausted (or none are configured), it falls back to
- * Google Gemini when GOOGLE_GENERATIVE_AI_API_KEY is set.
+ * Google Gemini when GOOGLE_GENERATIVE_AI_API_KEY or GEMINI_API_KEY is set.
  */
 export async function withBedrock<T>(
   fn: (model: LanguageModel) => Promise<T>,
 ): Promise<T> {
   const keys = getBedrockApiKeys();
-  const hasGeminiFallback = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  const hasGeminiFallback = Boolean(
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY,
+  );
   let lastError: unknown;
 
   for (const key of keys) {
@@ -74,13 +81,14 @@ export async function withBedrock<T>(
   // Fall back to Gemini when Bedrock is unavailable, throttled, or errored.
   if (hasGeminiFallback) {
     console.log("[v0] Falling back to Google Gemini for AI request.");
-    return await fn(google(GEMINI_MODEL_ID));
+    return await fn(googleProvider(GEMINI_MODEL_ID));
   }
 
   if (!lastError) {
     throw new Error(
-      "No AI provider configured. Set AWS_BEARER_TOKEN_BEDROCK or GOOGLE_GENERATIVE_AI_API_KEY.",
+      "No AI provider configured. Set AWS_BEARER_TOKEN_BEDROCK, GOOGLE_GENERATIVE_AI_API_KEY, or GEMINI_API_KEY.",
     );
   }
   throw lastError;
 }
+

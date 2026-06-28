@@ -17,10 +17,19 @@ INSERT INTO app_users (id, name, email, password_hash, role, status) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ------------------------------------------------------------
--- Customers (CRM leads)
--- Only real, testable outbound leads are seeded. No fabricated data.
+-- Customers (CRM leads) & Call Logs Cleanup (Remove Fake Stats)
 -- ------------------------------------------------------------
+DELETE FROM call_logs;
+DELETE FROM customers WHERE id NOT IN ('test_c1', 'test_c2');
+
 INSERT INTO customers (id, name, phone, email, status, assigned_agent, interest, notes) VALUES
-  ('test_c1', 'Juan Pérez',       '+1 (809) 709-0770', 'juan.perez@example.com', 'new', 'Unassigned', 'High', 'Outbound calling test lead 1 (DR).'),
-  ('test_c2', 'María Rodríguez',  '+1 (849) 566-0770', 'maria.rod@example.com', 'new', 'Unassigned', 'High', 'Outbound calling test lead 2 (DR).')
-ON CONFLICT (id) DO NOTHING;
+  ('test_c1', 'Juan Pérez',       '+1 (809) 709-0770', 'juan.perez@example.com', 'new', 'Unassigned', 'High', 'na (6/28/2026) | na (6/28/2026) | na (6/28/2026) | Outbound calling test lead 1 (DR).'),
+  ('test_c2', 'María Rodríguez',  '+1 (849) 566-0770', 'maria.rod@example.com', 'new', 'Unassigned', 'High', 'Outbound calling test lead 2 (DR)')
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  phone = EXCLUDED.phone,
+  email = EXCLUDED.email,
+  status = EXCLUDED.status,
+  assigned_agent = EXCLUDED.assigned_agent,
+  interest = EXCLUDED.interest,
+  notes = EXCLUDED.notes;

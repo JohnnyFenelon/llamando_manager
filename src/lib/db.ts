@@ -4,11 +4,15 @@ import { awsCredentialsProvider } from "@vercel/functions/oidc";
 import { attachDatabasePool } from "@vercel/functions";
 
 const signer = new Signer({
-  credentials: awsCredentialsProvider({
-    roleArn: process.env.AWS_ROLE_ARN as string,
-    clientConfig: { region: process.env.AWS_REGION },
-  }),
-  region: process.env.AWS_REGION,
+  ...(process.env.AWS_ROLE_ARN
+    ? {
+        credentials: awsCredentialsProvider({
+          roleArn: process.env.AWS_ROLE_ARN as string,
+          clientConfig: { region: process.env.AWS_REGION },
+        }),
+      }
+    : {}),
+  region: process.env.AWS_REGION || "us-east-1",
   hostname: process.env.PGHOST as string,
   username: process.env.PGUSER || "postgres",
   port: 5432,

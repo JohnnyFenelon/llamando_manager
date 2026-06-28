@@ -15,11 +15,15 @@ if (!file) {
 }
 
 const signer = new Signer({
-  credentials: awsCredentialsProvider({
-    roleArn: process.env.AWS_ROLE_ARN,
-    clientConfig: { region: process.env.AWS_REGION },
-  }),
-  region: process.env.AWS_REGION,
+  ...(process.env.AWS_ROLE_ARN
+    ? {
+        credentials: awsCredentialsProvider({
+          roleArn: process.env.AWS_ROLE_ARN,
+          clientConfig: { region: process.env.AWS_REGION },
+        }),
+      }
+    : {}),
+  region: process.env.AWS_REGION || "us-east-1",
   hostname: process.env.PGHOST,
   username: process.env.PGUSER || "postgres",
   port: 5432,

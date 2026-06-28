@@ -294,12 +294,38 @@ export default function Home() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFileName, setImportFileName] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const [parsedPreview, setParsedPreview] = useState<any[]>([]);
+
+  // Automatically parse text and files into a lead preview
+  useEffect(() => {
+    if (!importLeadsText.trim()) {
+      setParsedPreview([]);
+      return;
+    }
+    const lines = importLeadsText.split(/\r?\n/);
+    const preview: any[] = [];
+    lines.forEach((line, idx) => {
+      if (!line.trim()) return;
+      const parts = line.split(",");
+      const name = (parts[0] || "").trim();
+      const phone = (parts[1] || "").trim();
+      if (idx === 0 && /name/i.test(name) && /phone|tel/i.test(phone)) return;
+      if (parts.length >= 2 && name && phone) {
+        const email = parts[2] ? parts[2].trim() : `${name.toLowerCase().replace(/\s+/g, "")}@lead.com`;
+        const interest = parts[3] ? parts[3].trim() : "Medium";
+        preview.push({ name, phone, email, interest });
+      }
+    });
+    setParsedPreview(preview);
+  }, [importLeadsText]);
 
   // Workforce removal notifications are DERIVED from persisted customer state
   // (any closed_won / closed_lost lead is a removal candidate), so they work
   // across users and sessions. "Keep" dismisses locally without deleting.
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [activeToast, setActiveToast] = useState<{ id: string; name: string; status: string } | null>(null);
+  const prevNotifIds = useRef<string[]>([]);
 
   // AI Coach Chat
   const [chatMessages, setChatMessages] = useState<any[]>([
@@ -537,7 +563,7 @@ export default function Home() {
         /* ignore transient polling errors */
       }
     };
-    const timer = setInterval(refresh, 30000);
+    const timer = setInterval(refresh, 5000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userRole]);
@@ -873,6 +899,25 @@ export default function Home() {
     c => (c.status === "closed_won" || c.status === "closed_lost") && !dismissedNotifIds.includes(c.id),
   );
 
+  // Monitor removalNotifications to trigger toast for Workforce manager
+  useEffect(() => {
+    if (userRole !== "workforce") return;
+    const currentIds = removalNotifications.map(c => c.id);
+    const newCandidates = removalNotifications.filter(c => !prevNotifIds.current.includes(c.id));
+    if (newCandidates.length > 0) {
+      const newCand = newCandidates[0];
+      setActiveToast({
+        id: newCand.id,
+        name: newCand.name,
+        status: newCand.status
+      });
+      setTimeout(() => {
+        setActiveToast(prev => (prev?.id === newCand.id ? null : prev));
+      }, 8000);
+    }
+    prevNotifIds.current = currentIds;
+  }, [removalNotifications, userRole]);
+
   // CREATE NEW USER (Workforce Admin panel — password hashed server-side)
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1162,52 +1207,78 @@ export default function Home() {
   // ==========================================
   if (userRole === "guest") {
     return (
-      <div className="flex-1 flex flex-col justify-center items-center bg-[#f0f4f8] text-zinc-900 dark:bg-[#0b0f19] dark:text-zinc-100 min-h-screen p-6">
-        <div className="max-w-md w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-2xl shadow-xl flex flex-col gap-6">
-          <div className="text-center flex flex-col items-center gap-2">
-            
+      <div className="flex-1 flex flex-col justify-center items-center bg-gradient-to-tr from-[#faf8f5] via-[#f3f0ea] to-[#faf8f5] dark:from-[#050508] dark:via-[#0b0f19] dark:to-[#050508] text-zinc-900 dark:text-zinc-100 min-h-screen p-6 relative overflow-hidden transition-colors duration-500">
+        
+        {/* Floating Theme Toggle */}
+        <button
+          onClick={() => {
+            const nextMode = !darkMode;
+            setDarkMode(nextMode);
+            localStorage.setItem("llaman2_theme", nextMode ? "dark" : "light");
+          }}
+          className="absolute top-6 right-6 bg-white/40 dark:bg-black/30 border border-[#d4af37]/30 hover:border-[#d4af37] backdrop-blur-md rounded-full p-3 hover:bg-white/60 dark:hover:bg-black/50 transition-all z-20 cursor-pointer shadow-lg shadow-amber-500/5"
+          title="Toggle Theme"
+        >
+          {darkMode ? (
+            <Sun className="w-5 h-5 text-amber-400" />
+          ) : (
+            <Moon className="w-5 h-5 text-[#8a6d1c]" />
+          )}
+        </button>
+
+        {/* Futuristic Golden Background Spheres */}
+        <div className="absolute top-[15%] left-[calc(50%-260px)] w-36 h-36 rounded-full gold-sphere animate-float-slow pointer-events-none opacity-80 dark:opacity-90" />
+        <div className="absolute top-[calc(50%-160px)] right-[calc(50%-280px)] w-48 h-48 rounded-full gold-sphere-glow animate-float-reverse pointer-events-none opacity-70 dark:opacity-85" />
+        <div className="absolute bottom-[20%] left-[calc(50%-240px)] w-28 h-28 rounded-full gold-sphere-glow animate-float-reverse pointer-events-none opacity-75 dark:opacity-90" />
+        <div className="absolute bottom-10 right-[calc(50%-200px)] w-32 h-32 rounded-full gold-sphere animate-float-slow pointer-events-none opacity-80 dark:opacity-90" />
+        <div className="absolute top-8 right-[30%] w-16 h-16 rounded-full gold-sphere pointer-events-none opacity-60 dark:opacity-75" />
+
+        {/* Main Glassmorphism Login Container */}
+        <div className="max-w-md w-full bg-white/20 dark:bg-black/35 border border-[#d4af37]/35 dark:border-[#e5c158]/20 backdrop-blur-xl p-8 rounded-[2rem] shadow-2xl shadow-amber-500/5 dark:shadow-black/60 flex flex-col gap-6 relative z-10 hover:border-[#d4af37]/60 dark:hover:border-[#e5c158]/40 transition-all duration-500">
+          
+          <div className="text-center flex flex-col items-center gap-3">
             {/* LM Logo Container */}
-            <div className="flex items-center gap-2.5 mb-2">
-              <LMLogo className="w-12 h-12 shadow-md" />
+            <div className="flex items-center gap-3 mb-1">
+              <LMLogo className="w-12 h-12 shadow-lg rounded-xl bg-gradient-to-br from-[#ffe6a3] to-[#aa7c11] p-0.5" />
               <div className="text-left">
-                <h2 className="font-extrabold text-lg tracking-tight text-zinc-900 dark:text-white leading-none">
+                <h2 className="font-extrabold text-xl tracking-tight text-zinc-950 dark:text-white leading-none">
                   Llaman2 Manager
                 </h2>
-                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono font-bold tracking-wider">CONNECT CORE INTEGRATOR</span>
+                <span className="text-[9px] text-[#aa7c11] dark:text-[#e5c158] font-mono font-black tracking-widest uppercase">CONNECT CORE INTEGRATOR</span>
               </div>
             </div>
             
-            <p className="text-xs text-zinc-500">Sign in to access your customized role interface</p>
+            <p className="text-xs text-[#8a6d1c] dark:text-zinc-400 font-medium">Sign in to access your customized role interface</p>
           </div>
 
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             {authError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs rounded-lg flex items-center gap-2">
+              <div className="p-3.5 bg-rose-500/10 dark:bg-rose-950/20 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs rounded-xl flex items-center gap-2 font-medium">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                 <span>{authError}</span>
               </div>
             )}
 
             <div>
-              <label className="text-xs font-semibold text-zinc-500 block mb-1">Username / Email</label>
+              <label className="text-[11px] font-bold text-[#8a6d1c] dark:text-zinc-400 uppercase tracking-wider block mb-1">Username / Email</label>
               <input 
                 type="text" 
                 placeholder="e.g. workforce@connect-bpo.com" 
                 value={usernameInput} 
                 onChange={(e) => setUsernameInput(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/40 dark:bg-black/50 border border-[#d4af37]/25 dark:border-[#e5c158]/20 focus:border-[#d4af37] dark:focus:border-[#e5c158] text-[#4d3a0c] dark:text-[#ffe6a3] rounded-xl p-3 text-xs outline-none transition-all focus:ring-2 focus:ring-[#d4af37]/20 placeholder-[#aa7c11]/45"
                 required
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-zinc-500 block mb-1">Password</label>
+              <label className="text-[11px] font-bold text-[#8a6d1c] dark:text-zinc-400 uppercase tracking-wider block mb-1">Password</label>
               <input 
                 type="password" 
                 placeholder="••••" 
                 value={passwordInput} 
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/40 dark:bg-black/50 border border-[#d4af37]/25 dark:border-[#e5c158]/20 focus:border-[#d4af37] dark:focus:border-[#e5c158] text-[#4d3a0c] dark:text-[#ffe6a3] rounded-xl p-3 text-xs outline-none transition-all focus:ring-2 focus:ring-[#d4af37]/20 placeholder-[#aa7c11]/45"
                 required
               />
             </div>
@@ -1215,22 +1286,24 @@ export default function Home() {
             <button 
               type="submit" 
               disabled={isLoggingIn}
-              className="w-full mt-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-650 text-white font-semibold rounded-xl py-2.5 text-xs shadow cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full mt-3 bg-gradient-to-r from-[#aa7c11] via-[#d4af37] to-[#aa7c11] text-[#2a1d02] font-black uppercase rounded-xl py-3 text-xs shadow-lg shadow-amber-500/10 hover:shadow-amber-500/25 cursor-pointer hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed tracking-wider"
             >
               {isLoggingIn ? "Signing In..." : "Sign In"}
             </button>
           </form>
 
-          <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 text-center">
-            <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Demo Credentials</h4>
+          <div className="border-t border-[#d4af37]/20 dark:border-[#e5c158]/10 pt-4 text-center">
+            <h4 className="text-[10px] font-black text-[#aa7c11] dark:text-[#e5c158] uppercase tracking-widest mb-2.5">Demo Credentials</h4>
             <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-              <div className="bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-200 dark:border-zinc-900">
-                <span className="text-zinc-400">Supervisor:</span><br/>workforce@connect-bpo.com<br/>
-                <span className="text-zinc-400">Pass:</span> 1234
+              <div className="bg-white/30 dark:bg-black/40 p-2.5 rounded-xl border border-[#d4af37]/20 dark:border-[#e5c158]/10 text-left">
+                <span className="text-[#8a6d1c] dark:text-zinc-400 font-bold">Supervisor:</span><br/>
+                <span className="text-zinc-800 dark:text-zinc-300">workforce@connect-bpo.com</span><br/>
+                <span className="text-[#8a6d1c] dark:text-zinc-400 font-bold">Pass:</span> <span className="text-zinc-800 dark:text-zinc-300">1234</span>
               </div>
-              <div className="bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-200 dark:border-zinc-900">
-                <span className="text-zinc-400">Agent:</span><br/>agent@connect-bpo.com<br/>
-                <span className="text-zinc-400">Pass:</span> 1234
+              <div className="bg-white/30 dark:bg-black/40 p-2.5 rounded-xl border border-[#d4af37]/20 dark:border-[#e5c158]/10 text-left">
+                <span className="text-[#8a6d1c] dark:text-zinc-400 font-bold">Agent:</span><br/>
+                <span className="text-zinc-800 dark:text-zinc-300">agent@connect-bpo.com</span><br/>
+                <span className="text-[#8a6d1c] dark:text-zinc-400 font-bold">Pass:</span> <span className="text-zinc-800 dark:text-zinc-300">1234</span>
               </div>
             </div>
           </div>
@@ -2209,26 +2282,36 @@ export default function Home() {
                           Duration: {Math.floor(callDuration / 60)}:{(callDuration % 60).toString().padStart(2, "0")}
                         </span>
                       </div>
-                      <div className="flex gap-2 w-full max-w-[200px]">
-                        <button 
-                          onClick={() => {
-                            setClosedLeads(prev => prev + 1);
-                            setCustomers(prev => prev.map(c => {
-                              if (c.id === selectedCustomer?.id) {
-                                return { ...c, status: "closed_won" };
+                      <div className="flex flex-col gap-2 w-full max-w-[240px]">
+                        <div className="flex gap-2 w-full">
+                          <button 
+                            onClick={async () => {
+                              if (selectedCustomer) {
+                                await handleCloseSale(selectedCustomer, "closed_won");
                               }
-                              return c;
-                            }));
-                            alert("Lead closed won! Updated database.");
-                            handleEndCall();
-                          }}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
-                        >
-                          Won
-                        </button>
+                              handleEndCall();
+                            }}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
+                            title="Register Sale (Closed Won)"
+                          >
+                            Won
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              if (selectedCustomer) {
+                                await handleCloseSale(selectedCustomer, "closed_lost");
+                              }
+                              handleEndCall();
+                            }}
+                            className="flex-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
+                            title="Register Sale (Closed Lost)"
+                          >
+                            Lost
+                          </button>
+                        </div>
                         <button 
                           onClick={handleEndCall}
-                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
+                          className="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-2 text-xs font-semibold cursor-pointer shadow transition-colors"
                         >
                           {t.hangUp}
                         </button>
@@ -2778,18 +2861,27 @@ export default function Home() {
           ======================================================== */}
       {isImportModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#0c0c0f] border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-[#0c0c0f] border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
             <div className="p-5 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/30">
               <div>
-                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Bulk Lead Importer</h3>
-                <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">Format: Name, Phone, Email (One per line)</p>
+                <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Open Leads Importer</h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">Format: Name, Phone, Email, Interest (Header optional)</p>
               </div>
-              <button onClick={() => setIsImportModalOpen(false)} className="text-zinc-400 hover:text-zinc-655 dark:hover:text-zinc-200 text-xs">✕</button>
+              <button 
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportFileName("");
+                  setImportLeadsText("");
+                }} 
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
             
-            <div className="p-5 flex flex-col gap-3.5">
+            <div className="p-5 flex flex-col gap-3.5 max-h-[75vh] overflow-y-auto">
               <div>
-                <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">Upload CSV File</label>
+                <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">Attach CSV Document</label>
                 <input
                   ref={csvInputRef}
                   type="file"
@@ -2797,17 +2889,37 @@ export default function Home() {
                   onChange={handleCsvFileUpload}
                   className="hidden"
                 />
-                <button
-                  type="button"
-                  onClick={() => csvInputRef.current?.click()}
-                  className="w-full flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl py-5 px-3 text-zinc-500 hover:text-blue-600 transition-colors cursor-pointer"
-                >
-                  <Upload className="w-5 h-5" />
-                  <span className="text-xs font-semibold">
-                    {importFileName ? `Loaded: ${importFileName}` : "Click to upload a .csv file"}
-                  </span>
-                  <span className="text-[10px] text-zinc-400">Columns: Name, Phone, Email, Interest (header optional)</span>
-                </button>
+                {!importFileName ? (
+                  <button
+                    type="button"
+                    onClick={() => csvInputRef.current?.click()}
+                    className="w-full flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl py-5 px-3 text-zinc-500 hover:text-blue-600 transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span className="text-xs font-semibold">Click to upload a .csv file</span>
+                    <span className="text-[10px] text-zinc-400">Drag & drop your lead list here</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/10 p-3 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
+                      <div className="text-left">
+                        <p className="text-xs font-bold text-zinc-900 dark:text-zinc-50 truncate max-w-[200px]">{importFileName}</p>
+                        <p className="text-[9px] text-zinc-400">Attached successfully</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportFileName("");
+                        setImportLeadsText("");
+                      }}
+                      className="text-xs font-semibold text-rose-500 hover:text-rose-600 px-2 py-1 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    >
+                      Clear File
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -2822,20 +2934,68 @@ export default function Home() {
                   value={importLeadsText}
                   onChange={(e) => setImportLeadsText(e.target.value)}
                   placeholder={`John Doe, +1 (555) 111-2222, john@example.com\nJane Smith, +1 (555) 333-4444, jane@example.com`}
-                  className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none h-32 resize-none font-mono"
+                  className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs outline-none h-24 resize-none font-mono"
                 />
               </div>
 
-              <div className="flex gap-2 justify-end">
+              {/* Parsed Preview Table */}
+              {parsedPreview.length > 0 && (
+                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden mt-1">
+                  <div className="bg-zinc-50 dark:bg-zinc-900/50 p-2 border-b border-zinc-200 dark:border-zinc-800 text-[10px] font-bold text-zinc-500 flex justify-between">
+                    <span>PREVIEW (Parsed {parsedPreview.length} leads)</span>
+                    <span className="text-emerald-500">Ready to Import</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-[10px]">
+                      <thead>
+                        <tr className="bg-zinc-100 dark:bg-zinc-950 text-zinc-400 font-semibold border-b border-zinc-200 dark:border-zinc-800">
+                          <th className="py-1 px-2">Name</th>
+                          <th className="py-1 px-2">Phone</th>
+                          <th className="py-1 px-2">Email</th>
+                          <th className="py-1 px-2">Interest</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parsedPreview.slice(0, 3).map((item, idx) => (
+                          <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-900 last:border-none">
+                            <td className="py-1.5 px-2 font-medium text-zinc-900 dark:text-zinc-100">{item.name}</td>
+                            <td className="py-1.5 px-2 text-zinc-500">{item.phone}</td>
+                            <td className="py-1.5 px-2 text-zinc-500 truncate max-w-[120px]" title={item.email}>{item.email}</td>
+                            <td className="py-1.5 px-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                item.interest === "High" ? "bg-red-500/10 text-red-500" :
+                                item.interest === "Medium" ? "bg-amber-500/10 text-amber-500" :
+                                "bg-zinc-500/10 text-zinc-500"
+                              }`}>{item.interest}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {parsedPreview.length > 3 && (
+                    <div className="p-1.5 bg-zinc-50 dark:bg-zinc-950 text-[9px] text-zinc-400 text-center border-t border-zinc-200 dark:border-zinc-800 font-medium">
+                      ... and {parsedPreview.length - 3} more leads
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end mt-2">
                 <button 
-                  onClick={() => setIsImportModalOpen(false)}
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setImportFileName("");
+                    setImportLeadsText("");
+                  }}
                   className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleImportLeads}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl cursor-pointer shadow flex items-center gap-1"
+                  disabled={parsedPreview.length === 0}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl cursor-pointer shadow flex items-center gap-1"
                 >
                   <Upload className="w-3.5 h-3.5" /> Parse & Import
                 </button>
@@ -3061,6 +3221,49 @@ export default function Home() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification for Workforce Manager */}
+      {activeToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-zinc-900 border border-amber-500/35 text-white rounded-2xl p-4 shadow-2xl flex gap-3.5 backdrop-blur-xl">
+          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 flex-shrink-0 flex items-center justify-center">
+            <Bell className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              Customer Closed
+            </h4>
+            <p className="text-[10px] text-zinc-300 leading-normal">
+              <span className="font-semibold text-amber-400">{activeToast.name}</span> has been marked as <span className="font-semibold text-emerald-400">{activeToast.status.replace("_", " ")}</span>. Remove them from the active database?
+            </p>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => {
+                  handleRemoveCustomer(activeToast.id);
+                  setActiveToast(null);
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-lg py-1 px-3.5 cursor-pointer shadow transition-colors"
+              >
+                Remove
+              </button>
+              <button
+                onClick={() => {
+                  dismissNotification(activeToast.id);
+                  setActiveToast(null);
+                }}
+                className="border border-zinc-700 hover:bg-zinc-800 text-zinc-300 text-[10px] font-bold rounded-lg py-1 px-3.5 cursor-pointer transition-colors"
+              >
+                Keep
+              </button>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveToast(null)}
+            className="text-zinc-500 hover:text-zinc-300 text-xs self-start cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
