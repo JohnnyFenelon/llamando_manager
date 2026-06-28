@@ -1,58 +1,56 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import twilio from "twilio";
+import { getSession } from "@/lib/session";
 
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
-export async function POST(req: NextRequest) {
+// Issues a short-lived Amazon Connect / WebRTC voice access token.
+// All telephony credentials are read from server-side environment variables only —
+// nothing sensitive is ever accepted from the client.
+export async function POST() {
   try {
-    const body = await req.json().catch(() => ({}));
-    
-    // Support reading credentials from either the request body or environment variables
-    const accountSid = body.accountSid || process.env.TWILIO_ACCOUNT_SID;
-    const authToken = body.authToken || process.env.TWILIO_AUTH_TOKEN;
-    const twimlAppSid = body.twimlAppSid || process.env.TWILIO_TWIML_APP_SID;
-    const apiKey = body.apiKey || process.env.TWILIO_API_KEY;
-    const apiSecret = body.apiSecret || process.env.TWILIO_API_SECRET;
-
-    if (!accountSid) {
-      return NextResponse.json({ error: "Missing Account SID (Account SID requerido)" }, { status: 400 });
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!twimlAppSid) {
-      return NextResponse.json({ error: "Missing TwiML App SID (TwiML App SID requerido)" }, { status: 400 });
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
+    const apiKey = process.env.TWILIO_API_KEY;
+    const apiSecret = process.env.TWILIO_API_SECRET;
+
+    if (!accountSid || !twimlAppSid) {
+      return NextResponse.json(
+        { error: "Calling service is not configured. Contact your administrator." },
+        { status: 503 },
+      );
     }
 
-    // Twilio Voice Device registration requires an agent identity name (alphanumeric & underscores only)
-    const rawIdentity = body.identity || "agent_" + Math.floor(Math.random() * 9000 + 1000);
-    const identity = rawIdentity.replace(/[^a-zA-Z0-9_]/g, "_");
-
-    let token;
-
-    // Twilio Voice JWT Access Tokens must be signed with a dedicated API Key (SK...) and API Secret.
-    // Signing tokens using the main Auth Token is rejected by Twilio's signaling gateway (Error 20101).
-    if (apiKey && apiSecret) {
-      token = new AccessToken(accountSid, apiKey, apiSecret, { identity });
-    } else {
-      return NextResponse.json({ 
-        error: "Missing API Key (SK...) or API Secret in env. Twilio WebRTC requires API Key signing (Settings > API Keys in Twilio Console). (Falta API Key o API Secret. Twilio requiere firma con API Key)." 
-      }, { status: 400 });
+    if (!apiKey || !apiSecret) {
+      return NextResponse.json(
+        { error: "Calling service is not configured (missing API key). Contact your administrator." },
+        { status: 503 },
+      );
     }
 
-    // Add voice grant to enable outbound WebRTC calls
-    const voiceGrant = new VoiceGrant({
-      outgoingApplicationSid: twimlAppSid,
-      incomingAllow: true, // Allow inbound client calls if needed
-    });
+    // Derive a stable, sanitized identity from the authenticated session.
+    const identity = ("agent_" + session.id).replace(/[^a-zA-Z0-9_]/g, "_");
 
-    token.addGrant(voiceGrant);
+    const token = new AccessToken(accountSid, apiKey, apiSecret, { identity });
+    token.addGrant(
+      new VoiceGrant({
+        outgoingApplicationSid: twimlAppSid,
+        incomingAllow: true,
+      }),
+    );
 
-    return NextResponse.json({
-      token: token.toJwt(),
-      identity: identity
-    });
-  } catch (error: any) {
-    console.error("Twilio Token Endpoint Error:", error);
-    return NextResponse.json({ error: error.message || "Failed to generate token" }, { status: 500 });
+    return NextResponse.json({ token: token.toJwt(), identity });
+  } catch (error) {
+    console.error("[v0] Voice token error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate voice token" },
+      { status: 500 },
+    );
   }
 }

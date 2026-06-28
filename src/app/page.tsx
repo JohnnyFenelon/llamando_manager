@@ -67,27 +67,6 @@ import {
 // MOCK DATA DEFINITIONS
 // ==========================================
 
-const initialCustomers = [
-  { id: "c1", name: "Apex Technologies Ltd", phone: "+1 (555) 019-2834", email: "procurement@apextech.com", status: "new", assignedAgent: "Yuki Tanaka", interest: "High", notes: "Purchased lead. Cloud migration services." },
-  { id: "c2", name: "Global Logistics Inc", phone: "+1 (555) 024-8172", email: "john.b@globallogistics.com", status: "contacted", assignedAgent: "Chen Wei", interest: "Medium", notes: "Left voicemail. Call back during morning." },
-  { id: "c3", name: "InnoTech Solutions", phone: "+1 (555) 031-9281", email: "sandra@innotech.io", status: "qualified", assignedAgent: "Aarav Patel", interest: "High", notes: "Spoke to Director. Sending proposal." },
-  { id: "c4", name: "Nova Retail Group", phone: "+1 (555) 042-7711", email: "ops@novaretail.com", status: "closed_won", assignedAgent: "Yuki Tanaka", interest: "Closed", notes: "Closed 3-year enterprise contract." },
-  { id: "c5", name: "Quantum Labs", phone: "+1 (555) 056-1188", email: "billing@quantum.edu", status: "new", assignedAgent: "Unassigned", interest: "Low", notes: "Acquired via lead gen portal." },
-  { id: "c6", name: "Stellar Logistics", phone: "+1 (555) 067-2345", email: "freight@stellar.com", status: "contacted", assignedAgent: "Chen Wei", interest: "Low", notes: "Gatekeeper was hostile. Try direct line." },
-  { id: "c7", name: "Prime Finance Corp", phone: "+1 (555) 078-4392", email: "info@primefinance.com", status: "qualified", assignedAgent: "Sarah Connor", interest: "High", notes: "Highly interested in customer care outsourcing." },
-  { id: "c8", name: "Vanguard Tech", phone: "+1 (555) 089-3012", email: "hr@vanguard.tech", status: "closed_lost", assignedAgent: "Sarah Connor", interest: "None", notes: "No budget for outsource services." },
-  { id: "test_c1", name: "Juan Pérez", phone: "+1 (809) 709-0770", email: "juan.perez@example.com", status: "new", assignedAgent: "Unassigned", interest: "High", notes: "Twilio Outbound Calling Test Lead 1 (DR)." },
-  { id: "test_c2", name: "María Rodríguez", phone: "+1 (849) 566-0770", email: "maria.rod@example.com", status: "new", assignedAgent: "Unassigned", interest: "High", notes: "Twilio Outbound Calling Test Lead 2 (DR)." }
-];
-
-const initialUsers = [
-  { id: "u1", name: "Sarah Connor", email: "sarah@connect-bpo.com", password: "1234", role: "agent", status: "Active" },
-  { id: "u2", name: "Yuki Tanaka", email: "yuki@connect-bpo.com", password: "1234", role: "agent", status: "Active" },
-  { id: "u3", name: "Chen Wei", email: "chen@connect-bpo.com", password: "1234", role: "agent", status: "Active" },
-  { id: "u4", name: "Aarav Patel", email: "aarav@connect-bpo.com", password: "1234", role: "agent", status: "Active" },
-  { id: "u5", name: "Mei Ling", email: "mei@connect-bpo.com", password: "1234", role: "supervisor", status: "Active" }
-];
-
 const mockHistoricalPredictions = [
   { hour: "08:00", volume: 145, recommended: 25, current: 20 },
   { hour: "09:00", volume: 220, recommended: 35, current: 24 },
@@ -159,23 +138,20 @@ const translations = {
     sales: "sales",
     crmPerformance: "CRM Performance",
     monthProgressDescription: "Progress of Outbound sales goals against monthly quota.",
-    twilioDialer: "Twilio WebRTC Dialer",
-    twilioStatusLabel: "Twilio Device Status",
+    twilioDialer: "Amazon Connect Dialer",
+    twilioStatusLabel: "Connect Device Status",
     simulated: "Simulated",
-    liveTwilio: "Live Twilio",
+    liveTwilio: "Amazon Connect (Live)",
     unregistered: "Offline",
     ready: "Ready",
-    registering: "Registering...",
+    registering: "Connecting...",
     error: "Error",
-    outboundCall: "Outbound WebRTC Telephony",
+    outboundCall: "Outbound Cloud Telephony",
     hangUp: "Hang Up",
     dialing: "Dialing...",
     connected: "Connected",
-    settingsTitle: "Twilio Credentials",
-    callerIdLabel: "Outbound Caller ID (Phone Number)",
-    instructionsApp: "TwiML App SID",
-    instructionsTitle: "TwiML App Configuration Guide",
-    instructionsDescription: "In the Twilio Console, create a TwiML App. Set its Voice Request URL to a TwiML Bin templated to forward calls.",
+    connectConsole: "Open Amazon Connect Instances",
+    connectConsoleDesc: "Manage your contact center instances in the AWS Console.",
   },
   es: {
     dashboard: "Panel de Control",
@@ -203,23 +179,20 @@ const translations = {
     sales: "ventas",
     crmPerformance: "Rendimiento del CRM",
     monthProgressDescription: "Progreso de las metas de ventas salientes frente a la cuota mensual.",
-    twilioDialer: "Marcador Twilio WebRTC",
-    twilioStatusLabel: "Estado del Dispositivo Twilio",
+    twilioDialer: "Marcador Amazon Connect",
+    twilioStatusLabel: "Estado del Dispositivo Connect",
     simulated: "Simulado",
-    liveTwilio: "Twilio en Vivo",
+    liveTwilio: "Amazon Connect (En Vivo)",
     unregistered: "Desconectado",
     ready: "Listo",
-    registering: "Registrando...",
+    registering: "Conectando...",
     error: "Error",
-    outboundCall: "Telefonía WebRTC de Salida",
+    outboundCall: "Telefonía en la Nube de Salida",
     hangUp: "Colgar",
     dialing: "Marcando...",
     connected: "Conectado",
-    settingsTitle: "Credenciales de Twilio",
-    callerIdLabel: "Identificador de Llamadas (Teléfono)",
-    instructionsApp: "TwiML App SID",
-    instructionsTitle: "Guía de Configuración TwiML",
-    instructionsDescription: "En la Consola de Twilio, cree una TwiML App y configure su Voice Request URL a un TwiML Bin con plantilla.",
+    connectConsole: "Abrir Instancias de Amazon Connect",
+    connectConsoleDesc: "Gestione las instancias de su centro de contacto en la Consola de AWS.",
   }
 };
 
@@ -230,6 +203,9 @@ export default function Home() {
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(false);
 
   // Navigation tab (filtered by role)
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -257,15 +233,10 @@ export default function Home() {
   const [callDuration, setCallDuration] = useState(0);
   const callTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Twilio Calling Integration state
-  const [ccpMode, setCcpMode] = useState<"simulated" | "twilio">("twilio");
-  const [twilioAccountSid, setTwilioAccountSid] = useState("");
-  const [twilioAuthToken, setTwilioAuthToken] = useState("");
-  const [twilioAppSid, setTwilioAppSid] = useState("AP687aacf97143b7a5b42325e5aa2a5cb5");
-  const [twilioCallerId, setTwilioCallerId] = useState("+12602701286");
-  const [isCcpSettingsOpen, setIsCcpSettingsOpen] = useState(false);
+  // Amazon Connect / cloud telephony state.
+  // Credentials live server-side only; the client just selects a mode and receives a short-lived token.
+  const [ccpMode, setCcpMode] = useState<"simulated" | "twilio">("simulated");
   const [twilioStatus, setTwilioStatus] = useState<"unregistered" | "ready" | "connecting" | "connected" | "error" | "registering">("unregistered");
-  const [twilioToken, setTwilioToken] = useState("");
 
   const deviceRef = useRef<any>(null);
   const activeCallRef = useRef<any>(null);
@@ -298,12 +269,12 @@ export default function Home() {
   const [wizardSalesTarget, setWizardSalesTarget] = useState(120);
   const [wizardLeadsCount, setWizardLeadsCount] = useState(1500);
 
-  // CRM Databases (State-bound)
-  const [customers, setCustomers] = useState(initialCustomers);
+  // CRM Databases (loaded from Aurora PostgreSQL via API)
+  const [customers, setCustomers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   
-  // User Management
-  const [usersList, setUsersList] = useState(initialUsers);
+  // User Management (loaded from API for supervisors)
+  const [usersList, setUsersList] = useState<any[]>([]);
 
   // CRM Modals
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
