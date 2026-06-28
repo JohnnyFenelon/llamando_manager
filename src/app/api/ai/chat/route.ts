@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateText, type ModelMessage } from "ai";
-import { BEDROCK_MODEL } from "@/lib/ai";
+import { withBedrock } from "@/lib/ai";
 import { getSession } from "@/lib/session";
 
 export const maxDuration = 30;
@@ -32,16 +32,19 @@ export async function POST(req: Request) {
         content: m.text,
       }));
 
-    const { text } = await generateText({
-      model: BEDROCK_MODEL,
-      system:
-        `You are an AI Sales Coach for an outbound BPO call center, powered by Amazon Bedrock. ` +
-        `The agent's monthly target is ${pursueTarget} closed sales. ` +
-        `Help draft cold-calling scripts, objection-handling tactics, and conversion strategies. ` +
-        `Be practical and concise. Use markdown for structure. Reply in the language the agent uses.`,
-      messages,
-      maxOutputTokens: 800,
-    });
+    const { text } = await withBedrock((model) =>
+      generateText({
+        model,
+        system:
+          `You are an AI Sales Coach for an outbound BPO call center, powered by Amazon Bedrock. ` +
+          `The agent's monthly target is ${pursueTarget} closed sales. ` +
+          `Help draft cold-calling scripts, objection-handling tactics, and conversion strategies. ` +
+          `Be practical and concise. Use markdown for structure. Reply in the language the agent uses.`,
+        messages,
+        maxOutputTokens: 800,
+        maxRetries: 1,
+      }),
+    );
 
     return NextResponse.json({ text: text.trim() });
   } catch (error) {

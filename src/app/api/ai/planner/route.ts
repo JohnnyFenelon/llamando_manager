@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { BEDROCK_MODEL } from "@/lib/ai";
+import { withBedrock } from "@/lib/ai";
 import { getSession } from "@/lib/session";
 
 export const maxDuration = 60;
@@ -51,17 +51,22 @@ export async function POST(req: Request) {
       agentsTotalMonth = 25,
       pursueTarget = 150,
       leadsPurchased = 1800,
-      agents = ["Yuki", "Chen", "Aarav", "Sarah", "John", "Marcus"],
     } = body;
 
-    const { output } = await generateText({
-      model: BEDROCK_MODEL,
-      system:
-        "You are a workforce optimization engine for an outbound sales call center, running on Amazon Bedrock. " +
-        "Given operational parameters, produce a realistic weekly agent shift schedule, a 4-week sales forecast, " +
-        "and concrete optimization recommendations. Distribute the named agents across shifts sensibly. " +
-        "Afternoon answer rates are highest (14:00-17:30). Be quantitative in the suggestions.",
-      prompt: `Operational parameters:
+    const agents: string[] =
+      Array.isArray(body.agentNames) && body.agentNames.length > 0
+        ? body.agentNames
+        : ["Yuki", "Chen", "Aarav", "Sarah", "John", "Marcus"];
+
+    const { output } = await withBedrock((model) =>
+      generateText({
+        model,
+        system:
+          "You are a workforce optimization engine for an outbound sales call center, running on Amazon Bedrock. " +
+          "Given operational parameters, produce a realistic weekly agent shift schedule, a 4-week sales forecast, " +
+          "and concrete optimization recommendations. Distribute the named agents across shifts sensibly. " +
+          "Afternoon answer rates are highest (14:00-17:30). Be quantitative in the suggestions.",
+        prompt: `Operational parameters:
 - Weekly user/traffic target: ${weeklyUsersTarget}
 - Agents per shift: morning ${agentsMorning}, afternoon ${agentsAfternoon}, night ${agentsNight}, weekend ${agentsWeekend}
 - Total agents in rotation: ${agentsTotalMonth}
@@ -71,9 +76,11 @@ export async function POST(req: Request) {
 
 Required conversion rate is roughly ${((pursueTarget / leadsPurchased) * 100).toFixed(1)}%.
 Generate the schedule (Mon-Sun), the 4-week forecast, and the recommendations.`,
-      output: Output.object({ schema: PlanSchema }),
-      maxOutputTokens: 2000,
-    });
+        output: Output.object({ schema: PlanSchema }),
+        maxOutputTokens: 2000,
+        maxRetries: 1,
+      }),
+    );
 
     // Map to the shape the client expects.
     return NextResponse.json({
