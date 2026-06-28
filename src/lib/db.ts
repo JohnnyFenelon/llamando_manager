@@ -1,4 +1,4 @@
-import { Pool, type ClientBase } from "pg";
+import { Pool, type ClientBase, type QueryResultRow } from "pg";
 import { Signer } from "@aws-sdk/rds-signer";
 import { awsCredentialsProvider } from "@vercel/functions/oidc";
 import { attachDatabasePool } from "@vercel/functions";
@@ -28,14 +28,11 @@ const pool = new Pool({
 attachDatabasePool(pool);
 
 // Single-statement queries.
-export async function query<T = Record<string, unknown>>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[],
 ) {
-  return pool.query<T extends Record<string, unknown> ? T : never>(
-    text,
-    params as unknown[],
-  );
+  return pool.query<T>(text, params as unknown[]);
 }
 
 // Multi-statement transactions.

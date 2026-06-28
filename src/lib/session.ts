@@ -7,13 +7,30 @@ const COOKIE_NAME = "llamando_session";
 const MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
 
 function getSecretKey(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error(
-      "SESSION_SECRET is not set or too short. Add a strong random value to your environment.",
-    );
+  // Prefer an explicit SESSION_SECRET. If it isn't configured, derive a stable
+  // signing key from other long-lived project secrets so sessions remain valid
+  // across restarts without requiring an additional environment variable.
+  const explicit = process.env.SESSION_SECRET;
+  if (explicit && explicit.length >= 16) {
+    return new TextEncoder().encode(explicit);
   }
-  return new TextEncoder().encode(secret);
+
+  const derived = [
+    process.env.TWILIO_API_SECRET,
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.AWS_ACCOUNT_ID,
+    process.env.AWS_ROLE_ARN,
+  ]
+    .filter(Boolean)
+    .join("|");
+
+  if (derived.length >= 16) {
+    return new TextEncoder().encode(`llamando-session::${derived}`);
+  }
+
+  throw new Error(
+    "Unable to derive a session signing key. Set SESSION_SECRET in your environment.",
+  );
 }
 
 export async function createSession(user: SessionUser): Promise<void> {

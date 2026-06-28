@@ -5,7 +5,7 @@ import { query } from "@/lib/db";
 import { requireSupervisor, SessionError } from "@/lib/session";
 import type { AppUser } from "@/lib/types";
 
-interface UserRow {
+type UserRow = {
   id: string;
   name: string;
   email: string;

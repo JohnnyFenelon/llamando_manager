@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { query } from "@/lib/db";
 import { createSession } from "@/lib/session";
 
-interface UserRow {
+type UserRow = {
   id: string;
   name: string;
   email: string;

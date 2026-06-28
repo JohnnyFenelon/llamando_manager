@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       agents = ["Yuki", "Chen", "Aarav", "Sarah", "John", "Marcus"],
     } = body;
 
-    const { experimental_output } = await generateText({
+    const { output } = await generateText({
       model: BEDROCK_MODEL,
       system:
         "You are a workforce optimization engine for an outbound sales call center, running on Amazon Bedrock. " +
@@ -71,11 +71,16 @@ export async function POST(req: Request) {
 
 Required conversion rate is roughly ${((pursueTarget / leadsPurchased) * 100).toFixed(1)}%.
 Generate the schedule (Mon-Sun), the 4-week forecast, and the recommendations.`,
-      experimental_output: Output.object({ schema: PlanSchema }),
+      output: Output.object({ schema: PlanSchema }),
       maxOutputTokens: 2000,
     });
 
-    return NextResponse.json(experimental_output);
+    // Map to the shape the client expects.
+    return NextResponse.json({
+      schedule: output.schedules,
+      forecast: output.forecast,
+      strategy: output.suggestions,
+    });
   } catch (error) {
     console.error("[v0] Planner error:", error);
     return NextResponse.json(

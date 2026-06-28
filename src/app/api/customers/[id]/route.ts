@@ -3,7 +3,7 @@ import { query } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { Customer } from "@/lib/types";
 
-interface CustomerRow {
+type CustomerRow = {
   id: string;
   name: string;
   phone: string;
