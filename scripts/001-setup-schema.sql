@@ -1,6 +1,8 @@
 -- Llamando Manager production schema
--- Enable pgcrypto for bcrypt-compatible password hashing (gen_salt('bf'))
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DROP TABLE IF EXISTS call_logs;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS app_users;
 
 -- ============================================================
 -- USERS (agents & supervisors)
@@ -16,9 +18,9 @@ CREATE TABLE IF NOT EXISTS app_users (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Case-insensitive unique email
-CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_email_lower ON app_users (lower(email));
-CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users (role);
+-- Case-insensitive unique email (handled via lowercase conversion in code)
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS idx_app_users_email ON app_users (email);
+CREATE INDEX ASYNC IF NOT EXISTS idx_app_users_role ON app_users (role);
 
 -- ============================================================
 -- CUSTOMERS (CRM leads)
@@ -37,16 +39,16 @@ CREATE TABLE IF NOT EXISTS customers (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_customers_status ON customers (status);
-CREATE INDEX IF NOT EXISTS idx_customers_assigned_agent ON customers (assigned_agent);
-CREATE INDEX IF NOT EXISTS idx_customers_created_at ON customers (created_at DESC);
+CREATE INDEX ASYNC IF NOT EXISTS idx_customers_status ON customers (status);
+CREATE INDEX ASYNC IF NOT EXISTS idx_customers_assigned_agent ON customers (assigned_agent);
+CREATE INDEX ASYNC IF NOT EXISTS idx_customers_created_at ON customers (created_at);
 
 -- ============================================================
 -- CALL LOGS (audit of outbound calls)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS call_logs (
-  id               SERIAL PRIMARY KEY,
-  customer_id      TEXT REFERENCES customers (id) ON DELETE SET NULL,
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id      TEXT,
   agent_name       VARCHAR(120) NOT NULL,
   outcome          VARCHAR(40),
   notes            TEXT,
@@ -54,5 +56,5 @@ CREATE TABLE IF NOT EXISTS call_logs (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_call_logs_customer_id ON call_logs (customer_id);
-CREATE INDEX IF NOT EXISTS idx_call_logs_created_at ON call_logs (created_at DESC);
+CREATE INDEX ASYNC IF NOT EXISTS idx_call_logs_customer_id ON call_logs (customer_id);
+CREATE INDEX ASYNC IF NOT EXISTS idx_call_logs_created_at ON call_logs (created_at);

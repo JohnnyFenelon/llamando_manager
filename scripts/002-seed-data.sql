@@ -7,13 +7,13 @@
 -- Users (default demo password: "1234" — change in production)
 -- ------------------------------------------------------------
 INSERT INTO app_users (id, name, email, password_hash, role, status) VALUES
-  ('u1', 'Sarah Connor', 'sarah@connect-bpo.com', crypt('1234', gen_salt('bf')), 'agent', 'Active'),
-  ('u2', 'Yuki Tanaka',  'yuki@connect-bpo.com',  crypt('1234', gen_salt('bf')), 'agent', 'Active'),
-  ('u3', 'Chen Wei',     'chen@connect-bpo.com',  crypt('1234', gen_salt('bf')), 'agent', 'Active'),
-  ('u4', 'Aarav Patel',  'aarav@connect-bpo.com', crypt('1234', gen_salt('bf')), 'agent', 'Active'),
-  ('u5', 'Mei Ling',     'mei@connect-bpo.com',   crypt('1234', gen_salt('bf')), 'supervisor', 'Active'),
-  ('u_admin', 'Angela',  'workforce@connect-bpo.com', crypt('1234', gen_salt('bf')), 'supervisor', 'Active'),
-  ('u_agent', 'Agent Demo', 'agent@connect-bpo.com', crypt('1234', gen_salt('bf')), 'agent', 'Active')
+  ('u1', 'Sarah Connor', 'sarah@connect-bpo.com', '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'agent', 'Active'),
+  ('u2', 'Yuki Tanaka',  'yuki@connect-bpo.com',  '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'agent', 'Active'),
+  ('u3', 'Chen Wei',     'chen@connect-bpo.com',  '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'agent', 'Active'),
+  ('u4', 'Aarav Patel',  'aarav@connect-bpo.com', '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'agent', 'Active'),
+  ('u5', 'Mei Ling',     'mei@connect-bpo.com',   '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'supervisor', 'Active'),
+  ('u_admin', 'Angela',  'workforce@connect-bpo.com', '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'supervisor', 'Active'),
+  ('u_agent', 'Agent Demo', 'agent@connect-bpo.com', '$2b$10$LPprJJk68.jkTyEEkWX/L./1sa6a6sxOy0tpxK5tTtwtgaxbGeM0C', 'agent', 'Active')
 ON CONFLICT (id) DO NOTHING;
 
 -- ------------------------------------------------------------

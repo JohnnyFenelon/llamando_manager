@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import pg from "pg";
-import { Signer } from "@aws-sdk/rds-signer";
+import { DsqlSigner } from "@aws-sdk/dsql-signer";
 import { awsCredentialsProvider } from "@vercel/functions/oidc";
 
 const { Pool } = pg;
@@ -14,7 +14,7 @@ if (!file) {
   process.exit(1);
 }
 
-const signer = new Signer({
+const signer = new DsqlSigner({
   ...(process.env.AWS_ROLE_ARN
     ? {
         credentials: awsCredentialsProvider({
@@ -25,24 +25,28 @@ const signer = new Signer({
     : {}),
   region: process.env.AWS_REGION || "us-east-1",
   hostname: process.env.PGHOST,
-  username: process.env.PGUSER || "postgres",
-  port: 5432,
 });
 
 const pool = new Pool({
   host: process.env.PGHOST,
   database: process.env.PGDATABASE || "postgres",
   port: 5432,
-  user: process.env.PGUSER || "postgres",
-  password: () => signer.getAuthToken(),
+  user: process.env.PGUSER || "admin",
+  password: () => signer.getDbConnectAdminAuthToken(),
   ssl: { rejectUnauthorized: false },
   max: 4,
 });
 
 const sql = readFileSync(path.join(__dirname, file), "utf8");
+const statements = sql
+  .split(";")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
 
 try {
-  await pool.query(sql);
+  for (const statement of statements) {
+    await pool.query(statement);
+  }
   console.log(`✓ Executed ${file}`);
 } catch (err) {
   console.error(`✗ Failed executing ${file}:`, err.message);

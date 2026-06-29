@@ -1,9 +1,9 @@
 import { Pool, type ClientBase, type QueryResultRow } from "pg";
-import { Signer } from "@aws-sdk/rds-signer";
+import { DsqlSigner } from "@aws-sdk/dsql-signer";
 import { awsCredentialsProvider } from "@vercel/functions/oidc";
 import { attachDatabasePool } from "@vercel/functions";
 
-const signer = new Signer({
+const signer = new DsqlSigner({
   ...(process.env.AWS_ROLE_ARN
     ? {
         credentials: awsCredentialsProvider({
@@ -14,17 +14,15 @@ const signer = new Signer({
     : {}),
   region: process.env.AWS_REGION || "us-east-1",
   hostname: process.env.PGHOST as string,
-  username: process.env.PGUSER || "postgres",
-  port: 5432,
 });
 
 const pool = new Pool({
   host: process.env.PGHOST,
   database: process.env.PGDATABASE || "postgres",
   port: 5432,
-  user: process.env.PGUSER || "postgres",
-  // IAM auth token (valid up to 15 minutes; regenerated per connection).
-  password: () => signer.getAuthToken(),
+  user: process.env.PGUSER || "admin",
+  // IAM auth token for DSQL admin user
+  password: () => signer.getDbConnectAdminAuthToken(),
   ssl: { rejectUnauthorized: false },
   max: 20,
 });
